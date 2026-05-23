@@ -1,0 +1,248 @@
+﻿package com.chenran.parcel.widget
+
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.Context
+import android.content.Intent
+import android.widget.RemoteViews
+import com.chenran.parcel.util.SmsProcessor
+import com.chenran.parcel.util.getCustomList
+import com.chenran.parcel.util.SmsParser
+import com.chenran.parcel.util.getIndex
+import com.chenran.parcel.util.getPreferLockerAddress
+import com.chenran.parcel.util.formatPickupCode
+import com.chenran.parcel.MainActivity
+import com.chenran.parcel.R
+import com.chenran.parcel.util.getAllSaveData
+import com.chenran.parcel.util.loadCustomRulesToParser
+import com.chenran.parcel.util.addLog
+import com.chenran.parcel.model.ParcelData
+import com.chenran.parcel.viewmodel.ParcelViewModel
+import android.util.Log
+import android.util.TypedValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+
+class ParcelWidget : AppWidgetProvider() {
+    override fun onReceive(context: Context, intent: Intent) {
+
+        if ("miui.appwidget.action.APPWIDGET_UPDATE".equals(intent.getAction()) ||
+            "com.chenran.parcel.CUSTOM_SMS_ADDED".equals(intent.getAction())) {
+
+                // 获取 ParcelViewModel 实例
+            val viewModel = ParcelViewModel(context = context.applicationContext)
+            getAllSaveData(context, viewModel)
+            updateAppWidget(
+                context,
+                AppWidgetManager.getInstance(context),
+                null,
+                viewModel
+            )
+
+        } else {
+
+            super.onReceive(context, intent);
+
+        }
+
+    }
+
+    override fun onUpdate(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetIds: IntArray
+    ) {
+        // 获取 ParcelViewModel 实例
+        val viewModel = ParcelViewModel(context = context.applicationContext)
+        getAllSaveData(context, viewModel)
+
+        // 为每个小部件执行更新
+        for (appWidgetId in appWidgetIds) {
+            updateAppWidget(context, appWidgetManager, appWidgetId, viewModel)
+        }
+    }
+
+    override fun onEnabled(context: Context?) {
+        super.onEnabled(context)
+        // 当第一个小部件被添加时调用
+        // 获取 ParcelViewModel 实例
+        if(context!=null) {
+            val viewModel = ParcelViewModel(context = context.applicationContext)
+            getAllSaveData(context, viewModel)
+            updateAppWidget(
+                context,
+                AppWidgetManager.getInstance(context),
+                null,
+                viewModel
+            )
+        }
+    }
+
+    override fun onDisabled(context: Context?) {
+        super.onDisabled(context)
+        // 当最后一个小部件被移除时调用
+    }
+
+    companion object {
+        internal fun updateAppWidget(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int?,
+            viewModel: ParcelViewModel?
+        ) {
+            // 如果没有提供 appWidgetId，则更新所有实例
+            if (appWidgetId == null) {
+                val manager = AppWidgetManager.getInstance(context)
+                val ids = manager.getAppWidgetIds(
+                    android.content.ComponentName(context, ParcelWidget::class.java)
+                )
+                for (id in ids) {
+                    updateSingleAppWidget(context, manager, id, viewModel)
+                }
+            } else {
+                updateSingleAppWidget(context, appWidgetManager, appWidgetId, viewModel)
+            }
+        }
+
+        fun updateAllByProvider(
+            context: Context,
+            providerClass: Class<out AppWidgetProvider>,
+            viewModel: ParcelViewModel?
+        ) {
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(
+                android.content.ComponentName(context, providerClass)
+            )
+            for (id in ids) {
+                updateSingleAppWidget(context, manager, id, viewModel)
+            }
+        }
+
+        fun updateSingleAppWidget(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int,
+            viewModel: ParcelViewModel?
+        ) {
+            val parcels = viewModel?.parcelsData?.value
+            if (parcels != null && parcels.isNotEmpty()) {
+                populateWidgetData(context, appWidgetManager, appWidgetId, parcels)
+            } else {
+                val parser = SmsParser()
+                loadCustomRulesToParser(context, parser)
+                val completedIds = getCustomList(context, "completedIds").toList()
+                val daysFilter = getIndex(context)
+
+                GlobalScope.launch(Dispatchers.Main) {
+                    try {
+                        val result = SmsProcessor.loadAndProcess(context, daysFilter, parser, completedIds)
+                        populateWidgetData(context, appWidgetManager, appWidgetId, result.parcels)
+                    } catch (e: Exception) {
+                        Log.e("ParcelWidget", "Error loading SMS: ${e.message}")
+                        addLog(context, "桌面小组件加载失败: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        private fun populateWidgetData(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int,
+            parcels: List<ParcelData>
+        ) {
+            val isSeniorMode = context.getSharedPreferences("parcel_prefs", Context.MODE_PRIVATE)
+                .getBoolean("senior_mode", false)
+            val textScale = if (isSeniorMode) 2.0f else 1.0f
+
+            var total = 0
+            var address1 = ""
+            var codeList1 = ""
+            var address2 = ""
+            var codeList2 = ""
+            var address3 = ""
+            var codeList3 = ""
+            var address4 = ""
+            var codeList4 = ""
+            var address5 = ""
+            var codeList5 = ""
+            var address6 = ""
+            var codeList6 = ""
+
+            total = parcels.sumOf { it.num }
+            val preferLocker = getPreferLockerAddress(context)
+            fun fill(idx: Int, setAddr: (String)->Unit, setCodes: (String)->Unit) {
+                val item = parcels.getOrNull(idx)
+                if (item != null && item.num > 0) {
+                    val codes = item.smsDataList.filter { !it.isCompleted }
+                        .map { 
+                            val displayCode = formatPickupCode(it.code)
+                            if (!preferLocker && it.lockerNumber.isNotEmpty()) "$displayCode • ${it.lockerNumber}号柜"
+                            else displayCode 
+                        }
+                        .joinToString("\n")
+                    setAddr(item.address + "（${item.num}）")
+                    setCodes(codes)
+                } else {
+                    setAddr("")
+                    setCodes("")
+                }
+            }
+            fill(0, { address1 = it }, { codeList1 = it })
+            fill(1, { address2 = it }, { codeList2 = it })
+            fill(2, { address3 = it }, { codeList3 = it })
+            fill(3, { address4 = it }, { codeList4 = it })
+            fill(4, { address5 = it }, { codeList5 = it })
+            fill(5, { address6 = it }, { codeList6 = it })
+
+            // 构建 RemoteViews 对象
+            val views = RemoteViews(context.packageName, R.layout.widget_layout).apply {
+                setTextViewText(R.id.parcel_num, total.toString())
+                setTextViewText(R.id.widget_address1, address1)
+                setTextViewText(R.id.widget_codes1, codeList1)
+
+                setTextViewText(R.id.widget_address2, address2)
+                setTextViewText(R.id.widget_codes2, codeList2)
+                setTextViewText(R.id.widget_address3, address3)
+                setTextViewText(R.id.widget_codes3, codeList3)
+
+                setTextViewText(R.id.widget_address4, address4)
+                setTextViewText(R.id.widget_codes4, codeList4)
+                setTextViewText(R.id.widget_address5, address5)
+                setTextViewText(R.id.widget_codes5, codeList5)
+                setTextViewText(R.id.widget_address6, address6)
+                setTextViewText(R.id.widget_codes6, codeList6)
+
+                // 设置文字大小（老人模式放大2倍，普通模式恢复原始大小）
+                setTextViewTextSize(R.id.parcel_num, TypedValue.COMPLEX_UNIT_SP, 24f * textScale)
+                setTextViewTextSize(R.id.parcel, TypedValue.COMPLEX_UNIT_SP, 12f * textScale)
+                for (i in 1..6) {
+                    val addrId = context.resources.getIdentifier("widget_address$i", "id", context.packageName)
+                    val codeId = context.resources.getIdentifier("widget_codes$i", "id", context.packageName)
+                    val addrSize = if (i == 3) 14f else 12f
+                    setTextViewTextSize(addrId, TypedValue.COMPLEX_UNIT_SP, addrSize * textScale)
+                    setTextViewTextSize(codeId, TypedValue.COMPLEX_UNIT_SP, 16f * textScale)
+                }
+
+                // 设置点击意图
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                }
+                setOnClickPendingIntent(
+                    R.id.widget_container,
+                    PendingIntent.getActivity(
+                        context,
+                        0,
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                )
+            }
+
+            // 更新 App Widget
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+}

@@ -1,0 +1,95 @@
+﻿package com.chenran.parcel.widget
+
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.Context
+import android.content.Intent
+import android.widget.RemoteViews
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
+import com.chenran.parcel.MainActivity
+import com.chenran.parcel.R
+import com.chenran.parcel.viewmodel.ParcelViewModel
+import com.chenran.parcel.widget.ParcelWidget.Companion
+import com.chenran.parcel.util.getCustomList
+import com.chenran.parcel.util.getCustomSmsList
+import com.chenran.parcel.util.getAllSaveData
+import com.chenran.parcel.util.SmsParser
+import com.chenran.parcel.util.isSameDay
+
+class ParcelWidgetLarge : AppWidgetProvider() {
+        override fun onReceive(context: Context, intent: Intent) {
+
+        if ("miui.appwidget.action.APPWIDGET_UPDATE".equals(intent.getAction()) ||
+            "com.chenran.parcel.CUSTOM_SMS_ADDED".equals(intent.getAction())) {
+
+                // 获取 ParcelViewModel 实例
+            val viewModel = ParcelViewModel(context = context.applicationContext)
+            getAllSaveData(context, viewModel)
+            ParcelWidget.updateAllByProvider(context, ParcelWidgetLarge::class.java, viewModel)
+
+        } else {
+
+            super.onReceive(context, intent);
+
+        }
+
+    }
+
+    override fun onUpdate(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetIds: IntArray
+    ) {
+        // 获取 ParcelViewModel 实例
+        val viewModel = ParcelViewModel(context = context.applicationContext)
+        getAllSaveData(context, viewModel)
+
+        // 为每个小部件执行更新
+        for (appWidgetId in appWidgetIds) {
+            updateAppWidget(context, appWidgetManager, appWidgetId, viewModel)
+        }
+    }
+
+    override fun onEnabled(context: Context?) {
+        super.onEnabled(context)
+        // 当第一个小部件被添加时调用
+        // 获取 ParcelViewModel 实例
+        if(context!=null) {
+            val viewModel = ParcelViewModel(context = context.applicationContext)
+            getAllSaveData(context, viewModel)
+            ParcelWidget.updateAppWidget(
+                context,
+                AppWidgetManager.getInstance(context),
+                null,
+                viewModel
+            )
+        }
+    }
+
+    override fun onDisabled(context: Context?) {
+        super.onDisabled(context)
+        // 当最后一个小部件被移除时调用
+    }
+
+        companion object {
+        internal fun updateAppWidget(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int?,
+            viewModel: ParcelViewModel?
+        ) {
+            ParcelWidget.updateAllByProvider(context, ParcelWidgetLarge::class.java, viewModel)
+        }
+
+        private fun updateSingleAppWidget(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int,
+            viewModel: ParcelViewModel?
+        ) {
+            ParcelWidget.updateSingleAppWidget(context, appWidgetManager, appWidgetId, viewModel)
+        }
+        }
+}

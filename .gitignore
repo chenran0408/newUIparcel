@@ -1,0 +1,24 @@
+﻿# Secrets
+*.jks
+*.keystore
+key.properties
+*.p12
+*.pem
+
+# Build
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# gh CLI
+gh.exe
+
+
+*.idsig

@@ -1,0 +1,604 @@
+﻿package com.chenran.parcel.ui
+
+import android.content.Intent
+import android.provider.Settings
+import android.provider.Telephony
+import android.content.ComponentName
+import android.content.Context
+import android.os.Build
+import android.os.PowerManager
+import android.service.notification.NotificationListenerService
+import android.service.quicksettings.TileService
+import com.chenran.parcel.service.ParcelNotificationListenerService
+import com.chenran.parcel.service.NotificationAccessTileService
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Divider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.core.net.toUri
+import androidx.navigation.NavController
+import androidx.compose.material3.Switch
+import com.chenran.parcel.ui.theme.GlassCard
+import com.chenran.parcel.ui.theme.glassOnCardColor
+import com.chenran.parcel.ui.theme.glassOnCardVariantColor
+import com.chenran.parcel.ui.theme.glassSheetColor
+import com.chenran.parcel.util.getMainSwitch
+import com.chenran.parcel.util.setMainSwitch
+import com.chenran.parcel.util.getAppSwitch
+import com.chenran.parcel.util.setAppSwitch
+import com.chenran.parcel.util.getAppTitle
+import com.chenran.parcel.util.setAppTitle
+import com.chenran.parcel.util.getAppTitles
+import com.chenran.parcel.util.setAppTitles
+import com.chenran.parcel.util.ThirdPartyDefaults
+import com.chenran.parcel.util.getSystemSmsNotifySwitch
+import com.chenran.parcel.util.setSystemSmsNotifySwitch
+import com.chenran.parcel.util.getSystemSmsPackages
+import com.chenran.parcel.util.setSystemSmsPackages
+import android.net.Uri
+import androidx.compose.ui.Alignment
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UseNotificationScreen(navController: NavController) {
+    val context = LocalContext.current
+
+    val pddPackage = ThirdPartyDefaults.PDD_PACKAGE
+    val douyinPackage = ThirdPartyDefaults.DOUYIN_PACKAGE
+    val xhsPackage = ThirdPartyDefaults.XHS_PACKAGE
+    val wechatPackage = ThirdPartyDefaults.WECHAT_PACKAGE
+
+    var pddTitle by remember { mutableStateOf(getAppTitle(context, pddPackage).ifBlank { ThirdPartyDefaults.defaultTitleFor(pddPackage) }) }
+    var douyinTitle by remember { mutableStateOf(getAppTitle(context, douyinPackage).ifBlank { ThirdPartyDefaults.defaultTitleFor(douyinPackage) }) }
+    var xhsTitle by remember { mutableStateOf(getAppTitle(context, xhsPackage).ifBlank { ThirdPartyDefaults.defaultTitleFor(xhsPackage) }) }
+    var wechatTitles by remember { mutableStateOf(getAppTitles(context, wechatPackage, count = 5, defaultFirst = ThirdPartyDefaults.WECHAT_DEFAULT_FIRST)) }
+
+    var mainEnabled by remember { mutableStateOf(getMainSwitch(context)) }
+    var hasPermission by remember { mutableStateOf(isNotificationAccessGranted(context)) }
+    var batteryUnrestricted by remember { mutableStateOf(isBatteryOptimizationIgnored(context)) }
+
+    var pddEnabled by remember { mutableStateOf(getAppSwitch(context, pddPackage)) }
+    var douyinEnabled by remember { mutableStateOf(getAppSwitch(context, douyinPackage)) }
+    var xhsEnabled by remember { mutableStateOf(getAppSwitch(context, xhsPackage)) }
+    var wechatEnabled by remember { mutableStateOf(getAppSwitch(context, wechatPackage)) }
+    var systemSmsNotifyEnabled by remember { mutableStateOf(true) }
+    var systemSmsPkgs by remember { mutableStateOf(getSystemSmsPackages(context).toSet()) }
+    var smsCandidates by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    var showSmsPicker by remember { mutableStateOf(false) }
+    var selectedSmsPkg by remember { mutableStateOf(getSystemSmsPackages(context).firstOrNull()) }
+
+    LaunchedEffect(Unit) {
+        hasPermission = isNotificationAccessGranted(context)
+        batteryUnrestricted = isBatteryOptimizationIgnored(context)
+        try {
+            val sp = context.getSharedPreferences("MyPrefs", Context.MODE_PRIVATE)
+            if (!sp.contains("listen_system_sms_notify")) {
+                setSystemSmsNotifySwitch(context, true)
+                systemSmsNotifyEnabled = true
+            } else {
+                systemSmsNotifyEnabled = getSystemSmsNotifySwitch(context)
+            }
+            val pm = context.packageManager
+            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:0000"))
+            val infos = pm.queryIntentActivities(intent, 0)
+            smsCandidates = infos.map { ri ->
+                val pkg = ri.activityInfo.packageName
+                val label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                pkg to label
+            }.distinctBy { it.first }
+            if (smsCandidates.isEmpty()) {
+                val defaultPkg = Telephony.Sms.getDefaultSmsPackage(context)
+                if (defaultPkg != null) {
+                    val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(defaultPkg, 0)).toString() }.getOrElse { defaultPkg }
+                    smsCandidates = listOf(defaultPkg to label)
+                }
+            }
+            systemSmsPkgs = getSystemSmsPackages(context).toSet()
+            selectedSmsPkg = systemSmsPkgs.firstOrNull()
+        } catch (_: Exception) {}
+    }
+
+    // 页面恢复时重新检测（从系统设置返回后）
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                hasPermission = isNotificationAccessGranted(context)
+                batteryUnrestricted = isBatteryOptimizationIgnored(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 广播接收器已在 MainActivity 全局注册，这里不再重复注册
+
+    Scaffold(
+        containerColor = Color.Transparent,
+        topBar = {
+            TopAppBar(
+                title = { Text("监听第三方app通知", color = Color.White) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                navigationIcon = {
+                    IconButton(
+                        onClick = { navController.navigateUp() },
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                    }
+                }
+            )
+
+        },
+        
+    ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+            ) {
+                // 主开关与权限引导（简洁原始风格）
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "自动从第三方通知获得取件码消息",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = mainEnabled,
+                        onCheckedChange = { checked ->
+                            mainEnabled = checked
+                            setMainSwitch(context, checked)
+                            // 切换页面主开关后，立即刷新通知使用权状态与磁贴展示
+                            try {
+                                // 刷新快速设置磁贴的显示状态
+                                TileService.requestListeningState(
+                                    context,
+                                    ComponentName(context, NotificationAccessTileService::class.java)
+                                )
+                            } catch (_: Exception) {}
+
+                            if (checked && !hasPermission) {
+                                openNotificationAccessSettings(context)
+                            } else if (checked && hasPermission) {
+                                // 已授权且开启主开关时，主动请求系统重新绑定通知监听服务
+                                try {
+                                    NotificationListenerService.requestRebind(
+                                        ComponentName(context, ParcelNotificationListenerService::class.java)
+                                    )
+                                } catch (_: Exception) {}
+                            }
+
+                            // 重新读取一次授权状态以刷新页面提示
+                            hasPermission = isNotificationAccessGranted(context)
+                            batteryUnrestricted = isBatteryOptimizationIgnored(context)
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "如果还遇到系统杀进程，可以在通知栏添加名为 取件码 的开关，下拉通知便会重启。还可以任务栏锁定app，添加自启动，耗电管理不限制后台；还不行就在收到通知后，手动启动一下app，会自动读取保存取件码通知；还不行就卸载重装app",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = glassOnCardVariantColor()
+                )
+                if (!hasPermission && mainEnabled) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "尚未授予通知访问权限，点击前往设置授权",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            openNotificationAccessSettings(context)
+                        }) {
+                            Text("去授权", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                if (mainEnabled && !batteryUnrestricted) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "建议将耗电管理设置为不限制",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            openIgnoreBatteryOptimizationSettings(context)
+                        }) {
+                            Text("去设置", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 列表：拼多多、小红书、微信（恢复最初样式）
+                val controlsEnabled = mainEnabled && hasPermission
+                val sectionAlpha = if (mainEnabled) 1f else 0.5f
+
+                Text(text = "监听应用", style = MaterialTheme.typography.titleMedium, color = glassOnCardColor())
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(sectionAlpha)
+                ) {
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "网络短信通知", style = MaterialTheme.typography.titleMedium, color = glassOnCardColor(), modifier = Modifier.weight(1f))
+                                Switch(
+                                    checked = systemSmsNotifyEnabled,
+                                    onCheckedChange = { checked ->
+                                        if (controlsEnabled) {
+                                            systemSmsNotifyEnabled = checked
+                                            setSystemSmsNotifySwitch(context, checked)
+                                        }
+                                    },
+                                    enabled = controlsEnabled
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "当有短信读取不到时，自动保存所选短信App的通知内容到自定义短信",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = glassOnCardVariantColor()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                val selectedLabel = smsCandidates.firstOrNull { it.first == selectedSmsPkg }?.second
+                                Text(
+                                    text = if (selectedSmsPkg == null) "未选择短信应用" else "已监听：" + (selectedLabel ?: selectedSmsPkg!!),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (selectedSmsPkg == null) MaterialTheme.colorScheme.error else glassOnCardVariantColor()
+                                )
+                                TextButton(onClick = { showSmsPicker = true }, enabled = controlsEnabled) { Text("点击选择短信App") }
+                            }
+                            if (showSmsPicker) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    if (smsCandidates.isEmpty()) {
+                                        Text(text = "未检测到短信应用", color = glassOnCardColor())
+                                    } else {
+                                        smsCandidates.forEach { (pkg, label) ->
+                                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                Text(text = label, color = glassOnCardColor(), modifier = Modifier.weight(1f))
+                                                RadioButton(
+                                                    selected = selectedSmsPkg == pkg,
+                                                    onClick = {
+                                                        selectedSmsPkg = pkg
+                                                        val updated = setOf(pkg)
+                                                        systemSmsPkgs = updated
+                                                        setSystemSmsPackages(context, updated)
+                                                        showSmsPicker = false
+                                                    },
+                                                    enabled = controlsEnabled
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            AppListenItemMulti(
+                                appName = "微信",
+                                packageName = wechatPackage,
+                                titles = wechatTitles,
+                                checked = wechatEnabled,
+                                onCheckedChange = { checked ->
+                                    if (controlsEnabled) {
+                                        wechatEnabled = checked
+                                        setAppSwitch(context, wechatPackage, checked)
+                                    }
+                                },
+                                onTitleChangeAt = { index, new ->
+                                    val updated = wechatTitles.toMutableList()
+                                    if (index in updated.indices) {
+                                        updated[index] = new
+                                        wechatTitles = updated
+                                        setAppTitles(context, wechatPackage, updated)
+                                    }
+                                },
+                                onAddTitle = {
+                                    val updated = wechatTitles.toMutableList()
+                                    updated.add("")
+                                    wechatTitles = updated
+                                    setAppTitles(context, wechatPackage, updated)
+                                },
+                                onRemoveTitleAt = { index ->
+                                    val updated = wechatTitles.toMutableList()
+                                    if (updated.size > 1 && index in updated.indices) {
+                                        updated.removeAt(index)
+                                        wechatTitles = updated
+                                        setAppTitles(context, wechatPackage, updated)
+                                    }
+                                },
+                                enabled = controlsEnabled
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            AppListenItem(
+                                appName = "拼多多",
+                                packageName = pddPackage,
+                                titleText = pddTitle,
+                                checked = pddEnabled,
+                                onCheckedChange = { checked ->
+                                    if (controlsEnabled) {
+                                        pddEnabled = checked
+                                        setAppSwitch(context, pddPackage, checked)
+                                    }
+                                },
+                                onTitleChange = { new ->
+                                    pddTitle = new
+                                    setAppTitle(context, pddPackage, new)
+                                },
+                                enabled = controlsEnabled
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            AppListenItem(
+                                appName = "抖音",
+                                packageName = douyinPackage,
+                                titleText = douyinTitle,
+                                checked = douyinEnabled,
+                                onCheckedChange = { checked ->
+                                    if (controlsEnabled) {
+                                        douyinEnabled = checked
+                                        setAppSwitch(context, douyinPackage, checked)
+                                    }
+                                },
+                                onTitleChange = { new ->
+                                    douyinTitle = new
+                                    setAppTitle(context, douyinPackage, new)
+                                },
+                                enabled = controlsEnabled
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            AppListenItem(
+                                appName = "小红书",
+                                packageName = xhsPackage,
+                                titleText = xhsTitle,
+                                checked = xhsEnabled,
+                                onCheckedChange = { checked ->
+                                    if (controlsEnabled) {
+                                        xhsEnabled = checked
+                                        setAppSwitch(context, xhsPackage, checked)
+                                    }
+                                },
+                                onTitleChange = { new ->
+                                    xhsTitle = new
+                                    setAppTitle(context, xhsPackage, new)
+                                },
+                                enabled = controlsEnabled
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+        }
+    }
+}
+
+@Composable
+fun AppListenItem(
+    appName: String,
+    packageName: String,
+    titleText: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onTitleChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = appName, style = MaterialTheme.typography.titleMedium, color = glassOnCardColor(), modifier = Modifier.weight(1f))
+            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = titleText,
+            onValueChange = { onTitleChange(it) },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("监听标题") },
+            singleLine = true,
+            placeholder = { Text("请输入要匹配的通知标题") }
+        )
+    }
+}
+
+@Composable
+fun AppListenItemMulti(
+    appName: String,
+    packageName: String,
+    titles: List<String>,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onTitleChangeAt: (Int, String) -> Unit,
+    onAddTitle: () -> Unit,
+    onRemoveTitleAt: (Int) -> Unit,
+    enabled: Boolean,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = appName, style = MaterialTheme.typography.titleMedium, color = glassOnCardColor(), modifier = Modifier.weight(1f))
+            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        titles.forEachIndexed { index, value ->
+            OutlinedTextField(
+                value = value,
+                onValueChange = { onTitleChangeAt(index, it) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("会话名 ${index + 1}") },
+                singleLine = true,
+                placeholder = { Text("会话名，如好友名或群名称") },
+                trailingIcon = {
+                    IconButton(
+                        onClick = { onRemoveTitleAt(index) },
+                        enabled = enabled && titles.size > 1
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = "删除会话名")
+                    }
+                }
+            )
+            if (index != titles.lastIndex) {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onAddTitle, enabled = enabled) {
+                Icon(Icons.Filled.Add, contentDescription = "添加")
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("添加会话名")
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "添加好友名或群名称，只保存解析成功的消息，如无法保存，请先创建自定义规则",
+            style = MaterialTheme.typography.bodySmall,
+            color = glassOnCardVariantColor()
+        )
+    }
+}
+
+
+fun isNotificationAccessGranted(context: Context): Boolean {
+    val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+    if (flat.isNullOrBlank()) return false
+    val full = ComponentName(context, ParcelNotificationListenerService::class.java).flattenToString()
+    val short = "${context.packageName}/.service.ParcelNotificationListenerService"
+    return flat.split(":").any { it == full || it == short }
+}
+
+fun openNotificationAccessSettings(context: Context) {
+    val cn = ComponentName(context, ParcelNotificationListenerService::class.java)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).apply {
+            putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, cn.flattenToString())
+        }
+        context.startActivity(intent)
+    } else {
+        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+    }
+}
+
+fun isBatteryOptimizationIgnored(context: Context): Boolean {
+    val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    return pm.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+fun openIgnoreBatteryOptimizationSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+    context.startActivity(intent)
+}
