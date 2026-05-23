@@ -58,4 +58,4 @@ cd parcel-main
 
 ## 📄 许可
 
-沿用原项目 [GPL-3.0](https://github.com/shareven/parcel/blob/master/LICENSE) 许可证。
+沿用原项目 (https://github.com/shareven/parcel/blob/master/LICENSE) 许可证。
