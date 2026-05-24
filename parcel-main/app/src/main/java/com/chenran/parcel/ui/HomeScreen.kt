@@ -594,26 +594,6 @@ fun AddressCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    GlassSurface(
-                        onClick = {
-                            navController.navigate("add_custom_sms/${parcelData.address}")
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color.White.copy(alpha = if (isDarkTheme) 0.12f else 0.4f),
-                        modifier = Modifier.size(if (isSeniorMode) 40.dp else 32.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.Add,
-                                contentDescription = "添加自定义取件码",
-                                tint = onCardColor,
-                                modifier = Modifier.size(if (isSeniorMode) 24.dp else 18.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
                     Column(modifier = Modifier.weight(1f)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1109,28 +1089,49 @@ fun ParcelList(
             )
         }
     } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = if (isSeniorMode) 12.dp else 16.dp),
-            verticalArrangement = Arrangement.Top,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            items(filteredParcelsData, key = { it.address }) { result ->
-                val isExpanded = expandedStates.value[result.address] ?: true
-                AddressCard(
-                    context = context,
-                    viewModel = viewModel,
-                    navController = navController,
-                    updateAllWidget = updateAllWidget,
-                    showCompleted = showCompleted,
-                    showCodeTime = showCodeTime,
-                    parcelData = result,
-                    expandedStates = expandedStates,
-                    isExpanded = isExpanded,
-                    sortByLocker = sortByLocker,
-                    isSeniorMode = isSeniorMode,
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = if (isSeniorMode) 12.dp else 16.dp),
+                verticalArrangement = Arrangement.Top,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                items(filteredParcelsData, key = { it.address }) { result ->
+                    val isExpanded = expandedStates.value[result.address] ?: true
+                    AddressCard(
+                        context = context,
+                        viewModel = viewModel,
+                        navController = navController,
+                        updateAllWidget = updateAllWidget,
+                        showCompleted = showCompleted,
+                        showCodeTime = showCodeTime,
+                        parcelData = result,
+                        expandedStates = expandedStates,
+                        isExpanded = isExpanded,
+                        sortByLocker = sortByLocker,
+                        isSeniorMode = isSeniorMode,
+                    )
+                }
+            }
+            Surface(
+                onClick = { navController.navigate("add_custom_sms/ ") },
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.25f),
+                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+                    .size(if (isSeniorMode) 56.dp else 48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "添加自定义取件短信",
+                        tint = Color.White,
+                        modifier = Modifier.size(if (isSeniorMode) 28.dp else 24.dp)
+                    )
+                }
             }
         }
     }
