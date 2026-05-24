@@ -82,6 +82,7 @@ fun AddressGroupScreen(
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
     var allAddresses by remember { mutableStateOf(listOf<String>()) }
+    var addressSmsMap by remember { mutableStateOf(mapOf<String, List<String>>()) }
     var addressMappings by remember { mutableStateOf(mapOf<String, String>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
     val selectedAddresses = remember { mutableStateListOf<String>() }
@@ -103,10 +104,15 @@ fun AddressGroupScreen(
                     val parser = SmsParser()
                     loadCustomRulesToParser(context, parser)
 
-                    allMessages.mapNotNull { sms ->
+                    val addrMap = mutableMapOf<String, MutableList<String>>()
+                    allMessages.forEach { sms ->
                         val result = parser.parseSms(sms.body)
-                        if (result.success) result.address else null
-                    }.distinct().sorted()
+                        if (result.success) {
+                            addrMap.getOrPut(result.address) { mutableListOf() }.add(sms.body)
+                        }
+                    }
+                    addressSmsMap = addrMap.mapValues { it.value.distinct().take(5) }
+                    addrMap.keys.toList().sorted()
                 }
                 allAddresses = addresses
                 val tags = mappings.values.toSet().filter { it !in expandedTags }
@@ -251,6 +257,7 @@ fun AddressGroupScreen(
                         items(items = addresses.sorted(), key = { "addr_${tag}_$it" }) { addr ->
                             TagAddressItem(
                                 address = addr,
+                                smsSamples = addressSmsMap[addr] ?: emptyList(),
                                 isSelected = selectedAddresses.contains(addr),
                                 isSelectionMode = isSelectionMode,
                                 onItemClick = {
@@ -285,6 +292,7 @@ fun AddressGroupScreen(
                     items(items = unmappedAddresses, key = { "unmapped_$it" }) { addr ->
                         UnmappedAddressItem(
                             address = addr,
+                            smsSamples = addressSmsMap[addr] ?: emptyList(),
                             isSelected = selectedAddresses.contains(addr),
                             isSelectionMode = isSelectionMode,
                             onItemClick = {
@@ -336,6 +344,7 @@ fun AddressGroupScreen(
 @Composable
 private fun TagAddressItem(
     address: String,
+    smsSamples: List<String>,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     onItemClick: () -> Unit,
@@ -346,6 +355,7 @@ private fun TagAddressItem(
     } else {
         Modifier
     }
+    var showSms by remember { mutableStateOf(false) }
 
     GlassCard(
         modifier = Modifier
@@ -355,57 +365,93 @@ private fun TagAddressItem(
             .then(cardBorder)
             .clickable { onItemClick() },
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isSelectionMode) {
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primary
-                            else Color.Transparent
-                        )
-                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSelected) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary
+                                else Color.Transparent
+                            )
+                            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+
+                Text(
+                    text = address,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = glassOnCardColor(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (!isSelectionMode) {
+                    if (smsSamples.isNotEmpty()) {
+                        Surface(
+                            onClick = { showSms = !showSms },
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color.White.copy(alpha = 0.1f),
+                        ) {
+                            Text(
+                                text = if (showSms) "收起" else "短信",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = glassOnCardVariantColor().copy(alpha = 0.6f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Surface(
+                        onClick = onRemoveClick,
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color.Red.copy(alpha = 0.1f),
+                    ) {
+                        Text(
+                            text = "移出",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Red.copy(alpha = 0.7f)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(10.dp))
             }
-
-            Text(
-                text = address,
-                style = MaterialTheme.typography.bodyMedium,
-                color = glassOnCardColor(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-
-            if (!isSelectionMode) {
-                Surface(
-                    onClick = onRemoveClick,
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color.Red.copy(alpha = 0.1f),
+            AnimatedVisibility(visible = showSms) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.06f))
+                        .padding(8.dp)
                 ) {
-                    Text(
-                        text = "移出",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.Red.copy(alpha = 0.7f)
-                    )
+                    smsSamples.forEach { sms ->
+                        Text(
+                            text = sms.take(100) + if (sms.length > 100) "…" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = glassOnCardVariantColor().copy(alpha = 0.7f),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }
@@ -415,6 +461,7 @@ private fun TagAddressItem(
 @Composable
 private fun UnmappedAddressItem(
     address: String,
+    smsSamples: List<String>,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     onItemClick: () -> Unit,
@@ -425,6 +472,7 @@ private fun UnmappedAddressItem(
     } else {
         Modifier
     }
+    var showSms by remember { mutableStateOf(false) }
 
     GlassCard(
         modifier = Modifier
@@ -434,57 +482,93 @@ private fun UnmappedAddressItem(
             .then(cardBorder)
             .clickable { onItemClick() },
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isSelectionMode) {
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primary
-                            else Color.Transparent
-                        )
-                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSelected) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary
+                                else Color.Transparent
+                            )
+                            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+
+                Text(
+                    text = address,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = glassOnCardColor(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (!isSelectionMode) {
+                    if (smsSamples.isNotEmpty()) {
+                        Surface(
+                            onClick = { showSms = !showSms },
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color.White.copy(alpha = 0.1f),
+                        ) {
+                            Text(
+                                text = if (showSms) "收起" else "短信",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = glassOnCardVariantColor().copy(alpha = 0.6f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Surface(
+                        onClick = onTagClick,
+                        shape = RoundedCornerShape(6.dp),
+                        color = SuccessGreen.copy(alpha = 0.12f),
+                    ) {
+                        Text(
+                            text = "归类",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SuccessGreen.copy(alpha = 0.8f)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(10.dp))
             }
-
-            Text(
-                text = address,
-                style = MaterialTheme.typography.bodyMedium,
-                color = glassOnCardColor(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-
-            if (!isSelectionMode) {
-                Surface(
-                    onClick = onTagClick,
-                    shape = RoundedCornerShape(6.dp),
-                    color = SuccessGreen.copy(alpha = 0.12f),
+            AnimatedVisibility(visible = showSms) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.06f))
+                        .padding(8.dp)
                 ) {
-                    Text(
-                        text = "归类",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SuccessGreen.copy(alpha = 0.8f)
-                    )
+                    smsSamples.forEach { sms ->
+                        Text(
+                            text = sms.take(100) + if (sms.length > 100) "…" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = glassOnCardVariantColor().copy(alpha = 0.7f),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }
