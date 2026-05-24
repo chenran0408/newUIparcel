@@ -105,6 +105,7 @@ import com.chenran.parcel.util.formatPickupCode
 import com.chenran.parcel.util.getAddressMappings
 import com.chenran.parcel.util.getSortByLocker
 import com.chenran.parcel.util.importRulesFromJson
+import com.chenran.parcel.util.removeAddressMapping
 import com.chenran.parcel.util.removeCompletedId
 import com.chenran.parcel.util.saveAddressMapping
 import com.chenran.parcel.util.saveIndex
@@ -571,7 +572,9 @@ fun AddressCard(
     var showTagDialog by remember { mutableStateOf(false) }
     var showSmsDetail by remember { mutableStateOf<String?>(null) }
     val addressMappings = remember { getAddressMappings(context) }
+    val isGroupedByTag = addressMappings.containsKey(parcelData.address)
     val currentTag = addressMappings[parcelData.address] ?: ""
+    val displayTag = if (isGroupedByTag) parcelData.address else currentTag
 
     GlassCard(
         modifier = Modifier
@@ -615,14 +618,14 @@ fun AddressCard(
                             GlassSurface(
                                 onClick = { showTagDialog = true },
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (currentTag.isNotBlank()) SuccessGreen.copy(alpha = 0.15f) else Color.White.copy(alpha = if (isDarkTheme) 0.08f else 0.2f),
+                                color = if (displayTag.isNotBlank()) SuccessGreen.copy(alpha = 0.15f) else Color.White.copy(alpha = if (isDarkTheme) 0.08f else 0.2f),
                                 modifier = Modifier.size(if (isSeniorMode) 32.dp else 24.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = if (currentTag.isNotBlank()) currentTag.take(1) else "标",
+                                        text = if (displayTag.isNotBlank()) displayTag.take(1) else "标",
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = if (currentTag.isNotBlank()) SuccessGreen else onCardVariantColor,
+                                        color = if (displayTag.isNotBlank()) SuccessGreen else onCardVariantColor,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -829,17 +832,23 @@ fun AddressCard(
     }
 
     if (showTagDialog) {
+        val originalAddresses = parcelData.smsDataList.map { it.address }.distinct()
         TagDialog(
             currentAddress = parcelData.address,
-            currentTag = currentTag,
+            currentTag = displayTag,
             existingMappings = addressMappings,
             onDismiss = { showTagDialog = false },
             onConfirm = { tag ->
-                saveAddressMapping(context, parcelData.address, tag)
+                originalAddresses.forEach { addr ->
+                    saveAddressMapping(context, addr, tag)
+                }
                 showTagDialog = false
                 (context as? MainActivity)?.readAndParseSms()
             },
             onRemove = {
+                originalAddresses.forEach { addr ->
+                    removeAddressMapping(context, addr)
+                }
                 showTagDialog = false
                 (context as? MainActivity)?.readAndParseSms()
             }
