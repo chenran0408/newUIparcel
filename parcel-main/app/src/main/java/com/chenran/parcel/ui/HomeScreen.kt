@@ -575,7 +575,7 @@ fun AddressCard(
     var showTagDialog by remember { mutableStateOf(false) }
     var showSmsDetail by remember { mutableStateOf<String?>(null) }
     val addressMappings = remember { getAddressMappings(context) }
-    val isGroupedByTag = addressMappings.containsKey(parcelData.address)
+    val isGroupedByTag = parcelData.address != parcelData.smsDataList.firstOrNull()?.address || addressMappings.containsKey(parcelData.address)
     val currentTag = addressMappings[parcelData.address] ?: ""
     val displayTag = if (isGroupedByTag) parcelData.address else currentTag
 
@@ -705,12 +705,46 @@ fun AddressCard(
                                         color = onCardColor.copy(alpha = 0.8f),
                                         modifier = Modifier.weight(1f)
                                     )
-                                    Icon(
-                                        imageVector = if (addrExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                                        contentDescription = if (addrExpanded) "收起" else "展开",
-                                        tint = onCardVariantColor.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (parcelData.address != "未归类") {
+                                            Surface(
+                                                onClick = {
+                                                    removeAddressMapping(context, originalAddress)
+                                                    (context as? MainActivity)?.readAndParseSms()
+                                                },
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color.Red.copy(alpha = if (isDarkTheme) 0.12f else 0.1f),
+                                            ) {
+                                                Text(
+                                                    text = "移出",
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.Red.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                        } else {
+                                            Surface(
+                                                onClick = { showTagDialog = true },
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = SuccessGreen.copy(alpha = if (isDarkTheme) 0.12f else 0.1f),
+                                            ) {
+                                                Text(
+                                                    text = "归类",
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = SuccessGreen.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                        }
+                                        Icon(
+                                            imageVector = if (addrExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = if (addrExpanded) "收起" else "展开",
+                                            tint = onCardVariantColor.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                                 AnimatedVisibility(visible = addrExpanded) {
                                     Column {
