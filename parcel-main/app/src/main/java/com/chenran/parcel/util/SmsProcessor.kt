@@ -60,14 +60,16 @@ object SmsProcessor {
             if (result.success) {
                 val combinedKey = "${sms.id}_${sms.timestamp}"
                 val originalAddress = result.address
-                val groupAddress = addressMappings[originalAddress] ?: originalAddress
+                val isMapped = addressMappings.containsKey(originalAddress)
+                val groupAddress = if (isMapped) addressMappings[originalAddress]!! else originalAddress
+                val groupKey = if (isMapped) "tag:$groupAddress" else groupAddress
                 
                 val smsData = SmsData(originalAddress, result.code, sms, combinedKey, false, result.lockerNumber)
                 successful.add(smsData)
 
-                val existingParcel = parcelsMap[groupAddress]
                 val newItem = SmsData(originalAddress, result.code, sms, combinedKey, false, result.lockerNumber)
 
+                val existingParcel = parcelsMap[groupKey]
                 if (existingParcel != null) {
                     val existsSameDaySameAddrCode = existingParcel.smsDataList.any { existing ->
                         existing.address == newItem.address &&
@@ -78,9 +80,10 @@ object SmsProcessor {
                         existingParcel.smsDataList.add(newItem)
                     }
                 } else {
-                    parcelsMap[groupAddress] = ParcelData(
+                    parcelsMap[groupKey] = ParcelData(
                         groupAddress,
-                        mutableListOf(newItem)
+                        mutableListOf(newItem),
+                        groupKey = groupKey
                     )
                 }
             } else if (result.isPickupSms) {
@@ -88,14 +91,16 @@ object SmsProcessor {
                 val displayAddress = if (result.address.isNotEmpty()) result.address else "未识别"
                 val displayCode = if (result.code.isNotEmpty()) result.code else ""
                 val rawBody = sms.body
-                val groupAddress = addressMappings[displayAddress] ?: displayAddress
+                val isMapped = addressMappings.containsKey(displayAddress)
+                val groupAddress = if (isMapped) addressMappings[displayAddress]!! else displayAddress
+                val groupKey = if (isMapped) "tag:$groupAddress" else groupAddress
 
                 val smsData = SmsData(displayAddress, displayCode, sms, combinedKey, false, result.lockerNumber, rawBody)
                 successful.add(smsData)
 
-                val existingParcel = parcelsMap[groupAddress]
                 val newItem = SmsData(displayAddress, displayCode, sms, combinedKey, false, result.lockerNumber, rawBody)
 
+                val existingParcel = parcelsMap[groupKey]
                 if (existingParcel != null) {
                     val existsSameDaySameAddrCode = existingParcel.smsDataList.any { existing ->
                         existing.address == newItem.address &&
@@ -106,9 +111,10 @@ object SmsProcessor {
                         existingParcel.smsDataList.add(newItem)
                     }
                 } else {
-                    parcelsMap[groupAddress] = ParcelData(
+                    parcelsMap[groupKey] = ParcelData(
                         groupAddress,
-                        mutableListOf(newItem)
+                        mutableListOf(newItem),
+                        groupKey = groupKey
                     )
                 }
             } else {

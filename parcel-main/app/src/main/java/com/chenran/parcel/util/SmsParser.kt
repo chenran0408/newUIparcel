@@ -8,7 +8,7 @@ class SmsParser {
     val lockerPattern: Pattern =
         Pattern.compile("""(?i)(([0-9①-⑳]+)号(?:智能柜|格口柜|兔喜快递柜|快递柜|丰巢柜|蜂巢柜|熊猫柜|柜)(?:[A-Za-z0-9\-]+号?(?:格口|智能柜|柜))?)""")
     private val lockerCodePattern: Pattern =
-        Pattern.compile("""(?i)([0-9①-⑳]+)号(?:智能柜|格口柜|兔喜快递柜|快递柜|丰巢柜|蜂巢柜|熊猫柜|柜)(?:[A-Za-z0-9\-]+号?(?:格口|智能柜|柜))?[\s\-]*([A-Za-z0-9\-]+)""")
+        Pattern.compile("""(?i)([0-9①-⑳]+)号(?:智能柜|格口柜|兔喜快递柜|快递柜|丰巢柜|蜂巢柜|熊猫柜|柜)(?:[A-Za-z0-9\-]+号?(?:格口|智能柜|柜))?[\s\-]*([A-Za-z0-9\-]+)(?=[，,。\s]|$)""")
     private val addressPattern: Pattern =
         Pattern.compile("""(?i)(地址|收货地址|送货地址|位于|放至|已到达|到达|已到|送达|已放入|已存放至|已存放|放入|到|暂存|至|包裹在|派送至|送至|前往|存放在)[\s\S]*?([\u4e00-\u9fa5\w\s\-]+?(?:排\d+号|排|门牌|驿站|快递点|门面|便利店|超市|门口|号|店|柜|,|，|。|$))""")
     private val stationPattern: Pattern =
@@ -108,11 +108,6 @@ class SmsParser {
         }
 
         val lockerCodeMatcher = lockerCodePattern.matcher(sms)
-        if (lockerCodeMatcher.find()) {
-            if (foundCode.isEmpty()) {
-                foundCode = lockerCodeMatcher.group(2) ?: ""
-            }
-        }
 
         if (foundCode.isEmpty()) {
             val codeMatcher: Matcher = codePattern.matcher(sms)
@@ -124,6 +119,10 @@ class SmsParser {
                     break
                 }
             }
+        }
+
+        if (foundCode.isEmpty() && lockerCodeMatcher.find()) {
+            foundCode = lockerCodeMatcher.group(2) ?: ""
         }
 
         foundAddress = foundAddress.replace(Regex("[,，。]"), "")

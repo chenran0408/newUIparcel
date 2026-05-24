@@ -574,9 +574,9 @@ fun AddressCard(
     val onCardVariantColor = glassOnCardVariantColor()
     var showTagDialog by remember { mutableStateOf(false) }
     var showSmsDetail by remember { mutableStateOf<String?>(null) }
-    val addressMappings = remember { getAddressMappings(context) }
-    val isGroupedByTag = addressMappings.containsKey(parcelData.address)
-    val currentTag = addressMappings[parcelData.address] ?: ""
+    val addressMappings = getAddressMappings(context)
+    val isGroupedByTag = parcelData.groupKey.startsWith("tag:")
+    val currentTag = if (isGroupedByTag) parcelData.address else (addressMappings[parcelData.smsDataList.firstOrNull()?.address ?: ""] ?: "")
     val displayTag = if (isGroupedByTag) parcelData.address else currentTag
 
     GlassCard(
@@ -605,7 +605,7 @@ fun AddressCard(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable {
                                 expandedStates.value = expandedStates.value.toMutableMap().apply {
-                                    put(parcelData.address, !isExpanded)
+                                    put(parcelData.groupKey, !isExpanded)
                                 }
                             }
                         ) {
@@ -996,7 +996,7 @@ fun HorizontalParcelList(
                 .weight(1f)
         ) { page ->
             val parcel = parcelsData[page]
-            val isExpanded = expandedStates.value[parcel.address] ?: true
+            val isExpanded = expandedStates.value[parcel.groupKey] ?: true
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1132,8 +1132,8 @@ fun ParcelList(
                 verticalArrangement = Arrangement.Top,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                items(filteredParcelsData, key = { it.address }) { result ->
-                    val isExpanded = expandedStates.value[result.address] ?: true
+                items(filteredParcelsData, key = { it.groupKey }) { result ->
+                    val isExpanded = expandedStates.value[result.groupKey] ?: true
                     AddressCard(
                         context = context,
                         viewModel = viewModel,
