@@ -37,6 +37,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
@@ -84,6 +86,7 @@ import androidx.navigation.NavController
 import com.chenran.parcel.MainActivity
 import com.chenran.parcel.R
 import com.chenran.parcel.model.ParcelData
+import com.chenran.parcel.model.SmsData
 import com.chenran.parcel.ui.theme.FailPink
 import com.chenran.parcel.ui.theme.GlassCard
 import com.chenran.parcel.ui.theme.GlassChip
@@ -674,155 +677,84 @@ fun AddressCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(top = 8.dp)) {
-                    parcelData.smsDataList.forEach { smsData ->
-                        if (!(((!isExpanded) && smsData.isCompleted) || ((!showCompleted) && smsData.isCompleted))) {
-                            if (smsData.rawBody.isNotEmpty()) {
-                                var expanded by remember { mutableStateOf(false) }
+                    if (isGroupedByTag) {
+                        val groupedByAddr = parcelData.smsDataList.groupBy { it.address }
+                        groupedByAddr.forEach { (originalAddress, smsList) ->
+                            var addrExpanded by remember { mutableStateOf(true) }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = if (isDarkTheme) 0.04f else 0.08f))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Surface(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable { expanded = !expanded },
-                                        color = Color.White.copy(alpha = if (isDarkTheme) 0.06f else 0.12f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(0.5.dp, onCardColor.copy(alpha = 0.15f)),
-                                    ) {
-                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                            Text(
-                                                text = if (expanded) smsData.rawBody else smsData.rawBody.take(80) + if (smsData.rawBody.length > 80) "…" else "",
-                                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
-                                                color = onCardColor.copy(alpha = 0.85f),
-                                                maxLines = if (expanded) Int.MAX_VALUE else 3,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            if (!expanded && smsData.rawBody.length > 80) {
-                                                Text(
-                                                    text = "点击展开",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = onCardVariantColor.copy(alpha = 0.5f),
-                                                    modifier = Modifier.padding(top = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Column(
-                                        horizontalAlignment = Alignment.End
-                                    ) {
-                                        if (smsData.lockerNumber.isNotEmpty()) {
-                                            GlassChip {
-                                                Text(
-                                                    text = smsData.lockerNumber,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                                    style = if (isSeniorMode) MaterialTheme.typography.bodyLarge.copy(
-                                                        fontWeight = FontWeight.Bold
-                                                    ) else MaterialTheme.typography.labelMedium.copy(
-                                                        fontWeight = FontWeight.Bold
-                                                    ),
-                                                    color = onCardColor
-                                                )
-                                            }
-                                        }
-                                        if (showCodeTime) {
-                                            val sdf = remember(isSeniorMode) {
-                                                SimpleDateFormat(
-                                                    if (isSeniorMode) "MM-dd" else "MM-dd HH:mm",
-                                                    Locale.getDefault()
-                                                )
-                                            }
-                                            Text(
-                                                text = sdf.format(Date(smsData.sms.timestamp)),
-                                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall,
-                                                color = onCardVariantColor.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                        Surface(
-                                            onClick = { showSmsDetail = smsData.sms.body },
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color.White.copy(alpha = if (isDarkTheme) 0.08f else 0.15f),
-                                        ) {
-                                            Text(
-                                                text = "原文",
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = onCardVariantColor.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                    }
-                                }
-                            } else {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
+                                        .clickable { addrExpanded = !addrExpanded },
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    PickupCodeChip(
-                                        code = smsData.code,
-                                        isCompleted = smsData.isCompleted,
-                                        isSeniorMode = isSeniorMode,
-                                        isDarkTheme = isDarkTheme,
-                                        onClick = {
-                                            if (smsData.isCompleted) {
-                                                removeCompletedId(context, viewModel, smsData.sms)
-                                            } else {
-                                                addCompletedIds(context, viewModel, listOf(smsData.sms))
-                                            }
-                                            updateAllWidget()
-                                        }
+                                    Text(
+                                        text = originalAddress,
+                                        style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = onCardColor.copy(alpha = 0.8f),
+                                        modifier = Modifier.weight(1f)
                                     )
-
-                                    Column(
-                                        horizontalAlignment = Alignment.End
-                                    ) {
-                                        if (smsData.lockerNumber.isNotEmpty()) {
-                                            GlassChip {
-                                                Text(
-                                                    text = smsData.lockerNumber,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                                    style = if (isSeniorMode) MaterialTheme.typography.bodyLarge.copy(
-                                                        fontWeight = FontWeight.Bold
-                                                    ) else MaterialTheme.typography.labelMedium.copy(
-                                                        fontWeight = FontWeight.Bold
-                                                    ),
-                                                    color = onCardColor
+                                    Icon(
+                                        imageVector = if (addrExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = if (addrExpanded) "收起" else "展开",
+                                        tint = onCardVariantColor.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                AnimatedVisibility(visible = addrExpanded) {
+                                    Column {
+                                        smsList.forEach { smsData ->
+                                            if (!(((!isExpanded) && smsData.isCompleted) || ((!showCompleted) && smsData.isCompleted))) {
+                                                SmsDataRow(
+                                                    smsData = smsData,
+                                                    isSeniorMode = isSeniorMode,
+                                                    isDarkTheme = isDarkTheme,
+                                                    showCodeTime = showCodeTime,
+                                                    onCodeClick = {
+                                                        if (smsData.isCompleted) {
+                                                            removeCompletedId(context, viewModel, smsData.sms)
+                                                        } else {
+                                                            addCompletedIds(context, viewModel, listOf(smsData.sms))
+                                                        }
+                                                        updateAllWidget()
+                                                    },
+                                                    onRawClick = { showSmsDetail = smsData.sms.body }
                                                 )
                                             }
-                                        }
-                                        if (showCodeTime) {
-                                            val sdf = remember(isSeniorMode) {
-                                                SimpleDateFormat(
-                                                    if (isSeniorMode) "MM-dd" else "MM-dd HH:mm",
-                                                    Locale.getDefault()
-                                                )
-                                            }
-                                            Text(
-                                                text = sdf.format(Date(smsData.sms.timestamp)),
-                                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall,
-                                                color = onCardVariantColor.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                        Surface(
-                                            onClick = { showSmsDetail = smsData.sms.body },
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color.White.copy(alpha = if (isDarkTheme) 0.08f else 0.15f),
-                                        ) {
-                                            Text(
-                                                text = "原文",
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = onCardVariantColor.copy(alpha = 0.6f)
-                                            )
                                         }
                                     }
                                 }
+                            }
+                        }
+                    } else {
+                        parcelData.smsDataList.forEach { smsData ->
+                            if (!(((!isExpanded) && smsData.isCompleted) || ((!showCompleted) && smsData.isCompleted))) {
+                                SmsDataRow(
+                                    smsData = smsData,
+                                    isSeniorMode = isSeniorMode,
+                                    isDarkTheme = isDarkTheme,
+                                    showCodeTime = showCodeTime,
+                                    onCodeClick = {
+                                        if (smsData.isCompleted) {
+                                            removeCompletedId(context, viewModel, smsData.sms)
+                                        } else {
+                                            addCompletedIds(context, viewModel, listOf(smsData.sms))
+                                        }
+                                        updateAllWidget()
+                                    },
+                                    onRawClick = { showSmsDetail = smsData.sms.body }
+                                )
                             }
                         }
                     }
@@ -892,6 +824,162 @@ fun AddressCard(
                         text = showSmsDetail ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SmsDataRow(
+    smsData: SmsData,
+    isSeniorMode: Boolean,
+    isDarkTheme: Boolean,
+    showCodeTime: Boolean,
+    onCodeClick: () -> Unit,
+    onRawClick: () -> Unit,
+) {
+    val onCardColor = glassOnCardColor()
+    val onCardVariantColor = glassOnCardVariantColor()
+    val isDark = LocalIsDarkTheme.current
+
+    if (smsData.rawBody.isNotEmpty()) {
+        var expanded by remember { mutableStateOf(false) }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { expanded = !expanded },
+                color = Color.White.copy(alpha = if (isDark) 0.06f else 0.12f),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(0.5.dp, onCardColor.copy(alpha = 0.15f)),
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Text(
+                        text = if (expanded) smsData.rawBody else smsData.rawBody.take(80) + if (smsData.rawBody.length > 80) "…" else "",
+                        style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
+                        color = onCardColor.copy(alpha = 0.85f),
+                        maxLines = if (expanded) Int.MAX_VALUE else 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!expanded && smsData.rawBody.length > 80) {
+                        Text(
+                            text = "点击展开",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = onCardVariantColor.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+            }
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                if (smsData.lockerNumber.isNotEmpty()) {
+                    GlassChip {
+                        Text(
+                            text = smsData.lockerNumber,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            style = if (isSeniorMode) MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            ) else MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = onCardColor
+                        )
+                    }
+                }
+                if (showCodeTime) {
+                    val sdf = remember(isSeniorMode) {
+                        SimpleDateFormat(
+                            if (isSeniorMode) "MM-dd" else "MM-dd HH:mm",
+                            Locale.getDefault()
+                        )
+                    }
+                    Text(
+                        text = sdf.format(Date(smsData.sms.timestamp)),
+                        style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall,
+                        color = onCardVariantColor.copy(alpha = 0.6f)
+                    )
+                }
+                Surface(
+                    onClick = onRawClick,
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White.copy(alpha = if (isDark) 0.08f else 0.15f),
+                ) {
+                    Text(
+                        text = "原文",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = onCardVariantColor.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PickupCodeChip(
+                code = smsData.code,
+                isCompleted = smsData.isCompleted,
+                isSeniorMode = isSeniorMode,
+                isDarkTheme = isDarkTheme,
+                onClick = onCodeClick
+            )
+
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                if (smsData.lockerNumber.isNotEmpty()) {
+                    GlassChip {
+                        Text(
+                            text = smsData.lockerNumber,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            style = if (isSeniorMode) MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            ) else MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = onCardColor
+                        )
+                    }
+                }
+                if (showCodeTime) {
+                    val sdf = remember(isSeniorMode) {
+                        SimpleDateFormat(
+                            if (isSeniorMode) "MM-dd" else "MM-dd HH:mm",
+                            Locale.getDefault()
+                        )
+                    }
+                    Text(
+                        text = sdf.format(Date(smsData.sms.timestamp)),
+                        style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall,
+                        color = onCardVariantColor.copy(alpha = 0.6f)
+                    )
+                }
+                Surface(
+                    onClick = onRawClick,
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White.copy(alpha = if (isDark) 0.08f else 0.15f),
+                ) {
+                    Text(
+                        text = "原文",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = onCardVariantColor.copy(alpha = 0.6f)
                     )
                 }
             }
