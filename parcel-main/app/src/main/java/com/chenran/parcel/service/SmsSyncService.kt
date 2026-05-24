@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.service
+package com.chenran.parcel.service
 
 import android.app.Notification
 import android.app.NotificationChannel

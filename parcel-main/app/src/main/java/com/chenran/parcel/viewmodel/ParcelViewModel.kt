@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.viewmodel
+package com.chenran.parcel.viewmodel
 
 import android.content.Context
 import android.util.Log
@@ -117,6 +117,10 @@ class ParcelViewModel(
         smsParser.addCustomCodePattern(pattern)
     }
 
+    fun addCustomLockerPattern(pattern: String) {
+        smsParser.addCustomLockerPattern(pattern)
+    }
+
     fun addIgnoreKeyword(keyword: String) {
         smsParser.addIgnoreKeyword(keyword)
     }
@@ -125,9 +129,7 @@ class ParcelViewModel(
         smsParser.clearAllCustomPatterns()
     }
 
-    fun setPreferLockerAddress(enabled: Boolean) {
-        smsParser.preferLockerAddress = enabled
-    }
+
 
 }
 

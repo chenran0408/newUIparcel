@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.service
+package com.chenran.parcel.service
 
 import android.graphics.drawable.Icon
 import android.content.Context

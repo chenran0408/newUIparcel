@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.worker
+package com.chenran.parcel.worker
 
 import android.content.ComponentName
 import android.content.Context

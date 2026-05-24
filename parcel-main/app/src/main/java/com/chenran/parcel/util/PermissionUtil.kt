@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.util
+package com.chenran.parcel.util
 
 import android.app.Activity
 import android.app.AlertDialog

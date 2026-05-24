@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.ui.components
+package com.chenran.parcel.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -70,8 +70,6 @@ private fun getAllAddresses(context: android.content.Context): List<String> {
         val allMessages = allSms + customSms
         val parser = SmsParser()
         loadCustomRulesToParser(context, parser)
-        // 获取所有地址时，不需要显示几号柜
-        parser.preferLockerAddress = false
 
         allMessages.mapNotNull { sms ->
             val result = parser.parseSms(sms.body)

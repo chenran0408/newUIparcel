@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.widget
+package com.chenran.parcel.widget
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -10,7 +10,7 @@ import com.chenran.parcel.util.SmsProcessor
 import com.chenran.parcel.util.getCustomList
 import com.chenran.parcel.util.SmsParser
 import com.chenran.parcel.util.getIndex
-import com.chenran.parcel.util.getPreferLockerAddress
+import com.chenran.parcel.util.getSortByLocker
 import com.chenran.parcel.util.formatPickupCode
 import com.chenran.parcel.MainActivity
 import com.chenran.parcel.R
@@ -172,15 +172,16 @@ class ParcelWidget : AppWidgetProvider() {
             var codeList6 = ""
 
             total = parcels.sumOf { it.num }
-            val preferLocker = getPreferLockerAddress(context)
+            val sortByLocker = getSortByLocker(context)
             fun fill(idx: Int, setAddr: (String)->Unit, setCodes: (String)->Unit) {
                 val item = parcels.getOrNull(idx)
                 if (item != null && item.num > 0) {
                     val codes = item.smsDataList.filter { !it.isCompleted }
                         .map { 
                             val displayCode = formatPickupCode(it.code)
-                            if (!preferLocker && it.lockerNumber.isNotEmpty()) "$displayCode • ${it.lockerNumber}号柜"
-                            else displayCode 
+                            val locker = if (it.lockerNumber.isNotEmpty()) " • ${it.lockerNumber}" else ""
+                            val hint = if (it.rawBody.isNotEmpty()) " 📄" else ""
+                            displayCode + locker + hint
                         }
                         .joinToString("\n")
                     setAddr(item.address + "（${item.num}）")

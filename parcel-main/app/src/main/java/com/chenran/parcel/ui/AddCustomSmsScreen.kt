@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.ui
+package com.chenran.parcel.ui
 
 import android.content.ClipboardManager
 import android.content.Context
@@ -299,9 +299,11 @@ fun AddCustomSmsScreen(
                             timestamp = currentTime
                         )
                         addCustomSms(context, smsModel)
+                        com.chenran.parcel.util.addLog(context, "自定义短信已保存: ${generatedSmsContent.take(50)}")
+                        navController.navigate("home") {
+                            popUpTo("home") { inclusive = true }
+                        }
                         onCallback()
-                        navController.navigate("home")
-
                     }
                 ) {
                     Text(text = "点击保存")

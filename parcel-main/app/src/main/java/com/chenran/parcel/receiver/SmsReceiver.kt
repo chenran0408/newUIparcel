@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.receiver
+package com.chenran.parcel.receiver
 
 import android.content.BroadcastReceiver
 import android.content.Context

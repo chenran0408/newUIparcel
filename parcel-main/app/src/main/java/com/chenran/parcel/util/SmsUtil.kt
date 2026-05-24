@@ -19,6 +19,9 @@ class SmsUtil {
             return readSmsByTimeFilter(context, 0)
         }
 
+        private val lastSuccessfulSms = mutableMapOf<Int, List<SmsModel>>()
+        private val lastSuccessTs = mutableMapOf<Int, Long>()
+
         fun readSmsByTimeFilter(context: Context, daysFilter: Int): List<SmsModel> {
             val smsList = mutableListOf<SmsModel>()
             val contentResolver: ContentResolver = context.contentResolver
@@ -41,7 +44,6 @@ class SmsUtil {
             val projection = arrayOf("_id", "body", "date", "address")
             val sortOrder = "date DESC"
 
-            // Try multiple URIs for maximum compatibility with HarmonyOS / different ROMs
             val urisToTry = listOf(
                 Telephony.Sms.Inbox.CONTENT_URI to "Telephony.Sms.Inbox",
                 Uri.parse("content://sms/inbox") to "sms/inbox",
@@ -82,7 +84,18 @@ class SmsUtil {
             }
 
             if (smsList.isEmpty()) {
+                val now = System.currentTimeMillis()
+                val cached = lastSuccessfulSms[daysFilter]
+                val cachedTs = lastSuccessTs[daysFilter] ?: 0L
+                val recentSuccess = cached != null && cached.isNotEmpty() && (now - cachedTs) < 30_000L
+                if (recentSuccess) {
+                    addLog(context, "本次查询为空(daysFilter=$daysFilter)，使用 ${((now - cachedTs) / 1000)}秒前的缓存(${cached.size}条)")
+                    return cached
+                }
                 addLog(context, "所有短信URI均无法读取。请尝试使用通知监听功能。")
+            } else {
+                lastSuccessfulSms[daysFilter] = smsList.toList()
+                lastSuccessTs[daysFilter] = System.currentTimeMillis()
             }
 
             return smsList

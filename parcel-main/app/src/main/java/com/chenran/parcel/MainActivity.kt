@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
     val context = this
     val smsParser = SmsParser()
     private var customSmsReceiver: BroadcastReceiver? = null
+    private var smsRefreshJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -193,7 +194,9 @@ class MainActivity : ComponentActivity() {
     }
 
     fun readAndParseSms() {
-        lifecycleScope.launch {
+        smsRefreshJob?.cancel()
+        smsRefreshJob = lifecycleScope.launch {
+            kotlinx.coroutines.delay(500L)
             try {
                 val context = applicationContext
                 val daysFilter = viewModel.timeFilterIndex.value

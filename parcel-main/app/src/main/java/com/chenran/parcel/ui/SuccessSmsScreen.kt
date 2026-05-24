@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.ui
+package com.chenran.parcel.ui
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.BorderStroke

@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.ui
+package com.chenran.parcel.ui
 
 import android.content.Context
 import android.content.Intent

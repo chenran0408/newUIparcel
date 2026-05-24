@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.model
+package com.chenran.parcel.model
 
 import kotlinx.serialization.Serializable
 import java.sql.Timestamp

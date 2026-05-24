@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.ui
+package com.chenran.parcel.ui
 
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +54,7 @@ fun AddRuleScreen(
 ) {
     var addressPattern by remember { mutableStateOf("") }
     var codePattern by remember { mutableStateOf("") }
+    var lockerPattern by remember { mutableStateOf("") }
     var ignoreKeyword by remember { mutableStateOf("") }
 
     val cardColor = glassBaseColor().copy(alpha = 0.65f)
@@ -73,9 +74,10 @@ fun AddRuleScreen(
     val isButtonEnabled = if (hasMessage) {
         (addressPattern.isNotEmpty() && message.contains(addressPattern))
                 || (codePattern.isNotEmpty() && message.contains(codePattern))
+                || lockerPattern.isNotBlank()
                 || ignoreKeyword.isNotEmpty()
     } else {
-        addressPattern.isNotBlank() || codePattern.isNotBlank() || ignoreKeyword.isNotBlank()
+        addressPattern.isNotBlank() || codePattern.isNotBlank() || lockerPattern.isNotBlank() || ignoreKeyword.isNotBlank()
     }
 
     Scaffold(
@@ -166,6 +168,23 @@ fun AddRuleScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     Column {
                         Text(
+                            text = "柜号(如: 7号柜, ①号柜)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = onCardColor
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = lockerPattern,
+                            placeholder = { Text("选填", color = onCardColor.copy(alpha = 0.5f)) },
+                            onValueChange = { lockerPattern = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = textFieldColors,
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Column {
+                        Text(
                             text = "填入关键词，不解析短信",
                             style = MaterialTheme.typography.bodyMedium,
                             color = onCardColor
@@ -207,6 +226,12 @@ fun AddRuleScreen(
                                     addCustomList(context, "code", regexPattern)
                                     viewModel.addCustomCodePattern(regexPattern)
                                     codePattern = ""
+                                }
+                                if (lockerPattern.isNotBlank()) {
+                                    val lockerRegex = "(" + java.util.regex.Pattern.quote(lockerPattern) + ")"
+                                    addCustomList(context, "locker", lockerRegex)
+                                    viewModel.addCustomLockerPattern(lockerRegex)
+                                    lockerPattern = ""
                                 }
                                 if (ignoreKeyword.isNotBlank()) {
                                     addCustomList(context, "ignoreKeywords", ignoreKeyword)

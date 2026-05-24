@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.widget
+package com.chenran.parcel.widget
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager

@@ -36,10 +36,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +76,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.navigation.NavController
@@ -95,14 +99,21 @@ import com.chenran.parcel.ui.theme.pickupCodeBackgroundColorDark
 import com.chenran.parcel.ui.theme.pickupCodeColor
 import com.chenran.parcel.ui.theme.pickupCodeColorDark
 import com.chenran.parcel.util.addCompletedIds
+import com.chenran.parcel.util.addLog
+import com.chenran.parcel.util.exportRulesToJson
 import com.chenran.parcel.util.formatPickupCode
-import com.chenran.parcel.util.getPreferLockerAddress
+import com.chenran.parcel.util.getAddressMappings
+import com.chenran.parcel.util.getSortByLocker
+import com.chenran.parcel.util.importRulesFromJson
 import com.chenran.parcel.util.removeCompletedId
+import com.chenran.parcel.util.saveAddressMapping
 import com.chenran.parcel.util.saveIndex
+import com.chenran.parcel.util.saveSortByLocker
 import com.chenran.parcel.util.BackgroundManager
 import com.chenran.parcel.util.ThemeManager
 import com.chenran.parcel.util.WallpaperSettings
 import com.chenran.parcel.viewmodel.ParcelViewModel
+import com.chenran.parcel.ui.components.TagDialog
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -130,7 +141,7 @@ fun HomeScreen(
     var showCompleted by remember { mutableStateOf(getShowCompleted(context)) }
     var showCodeTime by remember { mutableStateOf(getShowCodeTime(context)) }
     var isHorizontalLayout by remember { mutableStateOf(getHorizontalLayout(context)) }
-    var preferLockerAddress by remember { mutableStateOf(getPreferLockerAddress(context)) }
+    var sortByLocker by remember { mutableStateOf<Boolean>(getSortByLocker(context)) }
 
     var tempWallpaperUri by remember { mutableStateOf("") }
     var showWallpaperAdjust by remember { mutableStateOf(false) }
@@ -147,6 +158,37 @@ fun HomeScreen(
             }
             tempWallpaperUri = uri.toString()
             showWallpaperAdjust = true
+        }
+    }
+
+    val importRulesLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val json = context.contentResolver.openInputStream(uri)?.bufferedReader().use { it?.readText() } ?: ""
+                importRulesFromJson(context, viewModel, json)
+                (context as MainActivity).readAndParseSms()
+                addLog(context, "规则导入成功")
+            } catch (e: Exception) {
+                addLog(context, "规则导入失败: ${e.message}")
+            }
+        }
+    }
+
+    val exportRulesLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val json = exportRulesToJson(context)
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    os.write(json.toByteArray(Charsets.UTF_8))
+                }
+                addLog(context, "规则导出成功")
+            } catch (e: Exception) {
+                addLog(context, "规则导出失败: ${e.message}")
+            }
         }
     }
 
@@ -242,13 +284,15 @@ fun HomeScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             val menuItems = listOf(
-                                if (preferLockerAddress) "不优先显示几号柜" else "优先显示几号柜",
+                                if (sortByLocker) "取消按柜号排序" else "按柜号排序",
                                 if (isHorizontalLayout) "切换为纵向地址" else "切换为横向地址",
                                 if (showCompleted) "隐藏已取件的码" else "显示已取件的码",
                                 if (showCodeTime) "隐藏时间" else "显示时间",
                                 "添加自定义取件短信",
                                 "地址归类",
                                 "规则列表",
+                                "导出规则",
+                                "导入规则",
                                 "查看日志",
                                 "监听第三方app通知",
                                 "淘宝身份码",
@@ -272,10 +316,9 @@ fun HomeScreen(
                                         showMenu = false
                                         when (idx) {
                                             0 -> {
-                                                val new = !preferLockerAddress
-                                                savePreferLockerAddress(context, new)
-                                                preferLockerAddress = new
-                                                viewModel.setPreferLockerAddress(new)
+                                                val new = !sortByLocker
+                                                saveSortByLocker(context, new)
+                                                sortByLocker = new
                                                 (context as MainActivity).readAndParseSms()
                                             }
                                             1 -> {
@@ -296,18 +339,20 @@ fun HomeScreen(
                                             4 -> navController.navigate("add_custom_sms/ ")
                                             5 -> navController.navigate("address_group")
                                             6 -> navController.navigate("rules")
-                                            7 -> navController.navigate("logs")
-                                            8 -> navController.navigate("use_notification")
-                                            9 -> openTaobaoIdentityEntry(context)
-                                            10 -> openPddIdentityEntry(context)
-                                            11 -> onSeniorModeChanged(!isSeniorMode)
-                                            12 -> {
+                                            7 -> exportRulesLauncher.launch("parcel_rules.json")
+                                            8 -> importRulesLauncher.launch(arrayOf("application/json"))
+                                            9 -> navController.navigate("logs")
+                                            10 -> navController.navigate("use_notification")
+                                            11 -> openTaobaoIdentityEntry(context)
+                                            12 -> openPddIdentityEntry(context)
+                                            13 -> onSeniorModeChanged(!isSeniorMode)
+                                            14 -> {
                                                 val next = (themeMode + 1) % 3
                                                 onThemeModeChanged(next)
                                             }
-                                            13 -> wallpaperPickerLauncher.launch(arrayOf("image/*"))
-                                            14 -> onWallpaperChanged("")
-                                            15 -> navController.navigate("about")
+                                            15 -> wallpaperPickerLauncher.launch(arrayOf("image/*"))
+                                            16 -> onWallpaperChanged("")
+                                            17 -> navController.navigate("about")
                                         }
                                     }
                                 )
@@ -335,7 +380,7 @@ fun HomeScreen(
                     showCompleted = showCompleted,
                     showCodeTime = showCodeTime,
                     isHorizontalLayout = isHorizontalLayout,
-                    preferLockerAddress = preferLockerAddress,
+                    sortByLocker = sortByLocker,
                     isSeniorMode = isSeniorMode
                 )
             } else {
@@ -516,13 +561,17 @@ fun AddressCard(
     parcelData: ParcelData,
     expandedStates: androidx.compose.runtime.MutableState<MutableMap<String, Boolean>>,
     isExpanded: Boolean,
-    preferLockerAddress: Boolean,
+    sortByLocker: Boolean,
     isSeniorMode: Boolean,
 ) {
     val isAllCompleted = parcelData.smsDataList.find { !it.isCompleted } == null
     val isDarkTheme = LocalIsDarkTheme.current
     val onCardColor = glassOnCardColor()
     val onCardVariantColor = glassOnCardVariantColor()
+    var showTagDialog by remember { mutableStateOf(false) }
+    var showSmsDetail by remember { mutableStateOf<String?>(null) }
+    val addressMappings = remember { getAddressMappings(context) }
+    val currentTag = addressMappings[parcelData.address] ?: ""
 
     GlassCard(
         modifier = Modifier
@@ -566,19 +615,39 @@ fun AddressCard(
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = parcelData.address,
-                            style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = onCardColor,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable {
                                 expandedStates.value = expandedStates.value.toMutableMap().apply {
                                     put(parcelData.address, !isExpanded)
                                 }
                             }
-                        )
+                        ) {
+                            Text(
+                                text = parcelData.address,
+                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = onCardColor,
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            GlassSurface(
+                                onClick = { showTagDialog = true },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (currentTag.isNotBlank()) SuccessGreen.copy(alpha = 0.15f) else Color.White.copy(alpha = if (isDarkTheme) 0.08f else 0.2f),
+                                modifier = Modifier.size(if (isSeniorMode) 32.dp else 24.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = if (currentTag.isNotBlank()) currentTag.take(1) else "标",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (currentTag.isNotBlank()) SuccessGreen else onCardVariantColor,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                         if (!isAllCompleted) {
                             Text(
                                 text = "${parcelData.num} 件待取",
@@ -624,62 +693,217 @@ fun AddressCard(
                 Column(modifier = Modifier.padding(top = 8.dp)) {
                     parcelData.smsDataList.forEach { smsData ->
                         if (!(((!isExpanded) && smsData.isCompleted) || ((!showCompleted) && smsData.isCompleted))) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                PickupCodeChip(
-                                    code = smsData.code,
-                                    isCompleted = smsData.isCompleted,
-                                    isSeniorMode = isSeniorMode,
-                                    isDarkTheme = isDarkTheme,
-                                    onClick = {
-                                        if (smsData.isCompleted) {
-                                            removeCompletedId(context, viewModel, smsData.sms)
-                                        } else {
-                                            addCompletedIds(context, viewModel, listOf(smsData.sms))
-                                        }
-                                        updateAllWidget()
-                                    }
-                                )
-
-                                Column(
-                                    horizontalAlignment = Alignment.End
+                            if (smsData.rawBody.isNotEmpty()) {
+                                var expanded by remember { mutableStateOf(false) }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Top
                                 ) {
-                                    if (!preferLockerAddress && smsData.lockerNumber.isNotEmpty()) {
-                                        GlassChip {
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { expanded = !expanded },
+                                        color = Color.White.copy(alpha = if (isDarkTheme) 0.06f else 0.12f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(0.5.dp, onCardColor.copy(alpha = 0.15f)),
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
                                             Text(
-                                                text = "${smsData.lockerNumber}号柜",
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge.copy(
-                                                    fontWeight = FontWeight.Bold
-                                                ) else MaterialTheme.typography.labelMedium.copy(
-                                                    fontWeight = FontWeight.Bold
-                                                ),
-                                                color = onCardColor
+                                                text = if (expanded) smsData.rawBody else smsData.rawBody.take(80) + if (smsData.rawBody.length > 80) "…" else "",
+                                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
+                                                color = onCardColor.copy(alpha = 0.85f),
+                                                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (!expanded && smsData.rawBody.length > 80) {
+                                                Text(
+                                                    text = "点击展开",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = onCardVariantColor.copy(alpha = 0.5f),
+                                                    modifier = Modifier.padding(top = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Column(
+                                        horizontalAlignment = Alignment.End
+                                    ) {
+                                        if (smsData.lockerNumber.isNotEmpty()) {
+                                            GlassChip {
+                                                Text(
+                                                    text = smsData.lockerNumber,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                    style = if (isSeniorMode) MaterialTheme.typography.bodyLarge.copy(
+                                                        fontWeight = FontWeight.Bold
+                                                    ) else MaterialTheme.typography.labelMedium.copy(
+                                                        fontWeight = FontWeight.Bold
+                                                    ),
+                                                    color = onCardColor
+                                                )
+                                            }
+                                        }
+                                        if (showCodeTime) {
+                                            val sdf = remember(isSeniorMode) {
+                                                SimpleDateFormat(
+                                                    if (isSeniorMode) "MM-dd" else "MM-dd HH:mm",
+                                                    Locale.getDefault()
+                                                )
+                                            }
+                                            Text(
+                                                text = sdf.format(Date(smsData.sms.timestamp)),
+                                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall,
+                                                color = onCardVariantColor.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                        Surface(
+                                            onClick = { showSmsDetail = smsData.sms.body },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color.White.copy(alpha = if (isDarkTheme) 0.08f else 0.15f),
+                                        ) {
+                                            Text(
+                                                text = "原文",
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = onCardVariantColor.copy(alpha = 0.6f)
                                             )
                                         }
                                     }
-                                    if (showCodeTime) {
-                                        val sdf = remember(isSeniorMode) {
-                                            SimpleDateFormat(
-                                                if (isSeniorMode) "MM-dd" else "MM-dd HH:mm",
-                                                Locale.getDefault()
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    PickupCodeChip(
+                                        code = smsData.code,
+                                        isCompleted = smsData.isCompleted,
+                                        isSeniorMode = isSeniorMode,
+                                        isDarkTheme = isDarkTheme,
+                                        onClick = {
+                                            if (smsData.isCompleted) {
+                                                removeCompletedId(context, viewModel, smsData.sms)
+                                            } else {
+                                                addCompletedIds(context, viewModel, listOf(smsData.sms))
+                                            }
+                                            updateAllWidget()
+                                        }
+                                    )
+
+                                    Column(
+                                        horizontalAlignment = Alignment.End
+                                    ) {
+                                        if (smsData.lockerNumber.isNotEmpty()) {
+                                            GlassChip {
+                                                Text(
+                                                    text = smsData.lockerNumber,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                    style = if (isSeniorMode) MaterialTheme.typography.bodyLarge.copy(
+                                                        fontWeight = FontWeight.Bold
+                                                    ) else MaterialTheme.typography.labelMedium.copy(
+                                                        fontWeight = FontWeight.Bold
+                                                    ),
+                                                    color = onCardColor
+                                                )
+                                            }
+                                        }
+                                        if (showCodeTime) {
+                                            val sdf = remember(isSeniorMode) {
+                                                SimpleDateFormat(
+                                                    if (isSeniorMode) "MM-dd" else "MM-dd HH:mm",
+                                                    Locale.getDefault()
+                                                )
+                                            }
+                                            Text(
+                                                text = sdf.format(Date(smsData.sms.timestamp)),
+                                                style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall,
+                                                color = onCardVariantColor.copy(alpha = 0.6f)
                                             )
                                         }
-                                        Text(
-                                            text = sdf.format(Date(smsData.sms.timestamp)),
-                                            style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelSmall,
-                                            color = onCardVariantColor.copy(alpha = 0.6f)
-                                        )
+                                        Surface(
+                                            onClick = { showSmsDetail = smsData.sms.body },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color.White.copy(alpha = if (isDarkTheme) 0.08f else 0.15f),
+                                        ) {
+                                            Text(
+                                                text = "原文",
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = onCardVariantColor.copy(alpha = 0.6f)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (showTagDialog) {
+        TagDialog(
+            currentAddress = parcelData.address,
+            currentTag = currentTag,
+            existingMappings = addressMappings,
+            onDismiss = { showTagDialog = false },
+            onConfirm = { tag ->
+                saveAddressMapping(context, parcelData.address, tag)
+                showTagDialog = false
+                (context as? MainActivity)?.readAndParseSms()
+            },
+            onRemove = {
+                showTagDialog = false
+                (context as? MainActivity)?.readAndParseSms()
+            }
+        )
+    }
+
+    if (showSmsDetail != null) {
+        Dialog(
+            onDismissRequest = { showSmsDetail = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                shape = RoundedCornerShape(20.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "完整短信",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(onClick = { showSmsDetail = null }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "关闭",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = showSmsDetail ?: "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
@@ -698,7 +922,7 @@ fun HorizontalParcelList(
     expandedStates: androidx.compose.runtime.MutableState<MutableMap<String, Boolean>>,
     selectedTabIndex: Int,
     onTabSelected: (Int) -> Unit,
-    preferLockerAddress: Boolean,
+    sortByLocker: Boolean,
     isSeniorMode: Boolean,
 ) {
     val pagerState = rememberPagerState(
@@ -776,7 +1000,7 @@ fun HorizontalParcelList(
                         parcelData = parcel,
                         expandedStates = expandedStates,
                         isExpanded = isExpanded,
-                        preferLockerAddress = preferLockerAddress,
+                        sortByLocker = sortByLocker,
                         isSeniorMode = isSeniorMode,
                     )
                 }
@@ -797,7 +1021,7 @@ fun ParcelList(
     isHorizontalLayout: Boolean = false,
     selectedTabIndex: Int = 0,
     onTabSelected: (Int) -> Unit = {},
-    preferLockerAddress: Boolean,
+    sortByLocker: Boolean,
     isSeniorMode: Boolean,
 ) {
     val parcelsData by viewModel.parcelsData.collectAsState()
@@ -827,7 +1051,7 @@ fun ParcelList(
                 currentTabIndex = it
                 onTabSelected(it)
             },
-            preferLockerAddress = preferLockerAddress,
+            sortByLocker = sortByLocker,
             isSeniorMode = isSeniorMode,
         )
         return
@@ -904,7 +1128,7 @@ fun ParcelList(
                     parcelData = result,
                     expandedStates = expandedStates,
                     isExpanded = isExpanded,
-                    preferLockerAddress = preferLockerAddress,
+                    sortByLocker = sortByLocker,
                     isSeniorMode = isSeniorMode,
                 )
             }
@@ -1012,13 +1236,5 @@ private fun getHorizontalLayout(context: Context): Boolean {
         prefs.getBoolean("horizontal_layout", false)
     } catch (_: Exception) {
         false
-    }
-}
-
-private fun savePreferLockerAddress(context: Context, prefer: Boolean) {
-    try {
-        val prefs = context.getSharedPreferences("parcel_prefs", Context.MODE_PRIVATE)
-        prefs.edit { putBoolean("prefer_locker_address", prefer) }
-    } catch (_: Exception) {
     }
 }

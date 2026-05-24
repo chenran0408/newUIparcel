@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.util
+package com.chenran.parcel.util
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -14,8 +14,8 @@ import kotlinx.serialization.decodeFromString
 fun loadCustomRulesToParser(context: Context, parser: SmsParser) {
     getCustomList(context, "address").forEach { if (it.isNotBlank()) parser.addCustomAddressPattern(it) }
     getCustomList(context, "code").forEach { if (it.isNotBlank()) parser.addCustomCodePattern(it) }
+    getCustomList(context, "locker").forEach { if (it.isNotBlank()) parser.addCustomLockerPattern(it) }
     getCustomList(context, "ignoreKeywords").forEach { if (it.isNotBlank()) parser.addIgnoreKeyword(it) }
-    parser.preferLockerAddress = getPreferLockerAddress(context)
 }
 
 
@@ -82,10 +82,11 @@ fun addCompletedIds(context: Context, viewModel: ParcelViewModel, smsList: List<
 fun getAllSaveData(context: Context, viewModel: ParcelViewModel) {
     val listAddr = getCustomList(context, "address").toMutableList()
     val listCode = getCustomList(context, "code").toMutableList()
+    val listLocker = getCustomList(context, "locker").toMutableList()
     val completedIds = getCustomList(context, "completedIds").toMutableList()
     val ignoreKeywords = getCustomList(context, "ignoreKeywords").toMutableList()
     val timeFilterIndex = getIndex(context)
-    val preferLockerAddress = getPreferLockerAddress(context)
+    val sortByLocker = getSortByLocker(context)
 
     listAddr.forEach {
         viewModel.addCustomAddressPattern(it)
@@ -93,21 +94,32 @@ fun getAllSaveData(context: Context, viewModel: ParcelViewModel) {
     listCode.forEach {
         viewModel.addCustomCodePattern(it)
     }
+    listLocker.forEach {
+        viewModel.addCustomLockerPattern(it)
+    }
     ignoreKeywords.forEach {
         viewModel.addIgnoreKeyword(it)
     }
     viewModel.setTimeFilterIndex(timeFilterIndex)
     viewModel.setAllCompletedIds(completedIds)
-    viewModel.setPreferLockerAddress(preferLockerAddress)
 }
 
-fun getPreferLockerAddress(context: Context): Boolean {
+fun getSortByLocker(context: Context): Boolean {
     return try {
         val prefs = context.getSharedPreferences("parcel_prefs", Context.MODE_PRIVATE)
-        prefs.getBoolean("prefer_locker_address", true)
+        prefs.getBoolean("sort_by_locker", false)
     } catch (_: Exception) {
-        true
+        false
     }
+}
+
+fun saveSortByLocker(context: Context, sort: Boolean) {
+    try {
+        val prefs = context.getSharedPreferences("parcel_prefs", Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        editor.putBoolean("sort_by_locker", sort)
+        editor.apply()
+    } catch (_: Exception) { }
 }
 
 
@@ -156,6 +168,8 @@ fun getCustomSmsByTimeFilter(context: Context, daysFilter: Int): List<SmsModel> 
         addLog(context, "解析自定义短信列表失败: ${e.message}")
         emptyList()
     }
+    
+    addLog(context, "读取自定义短信: 共${allCustomSms.size}条, daysFilter=$daysFilter")
     
     // 如果没有时间过滤，返回所有自定义短信
     if (daysFilter <= 0) {
@@ -495,4 +509,52 @@ fun clearAddressMappings(context: Context) {
 fun getAllTags(context: Context): List<String> {
     val mappings = getAddressMappings(context)
     return mappings.values.toSet().toList()
+}
+
+@kotlinx.serialization.Serializable
+data class RulesExportData(
+    val version: String,
+    val exportTime: Long,
+    val addressRules: List<String>,
+    val codeRules: List<String>,
+    val lockerRules: List<String>,
+    val ignoreKeywords: List<String>
+)
+
+fun exportRulesToJson(context: Context): String {
+    val data = RulesExportData(
+        version = "1",
+        exportTime = System.currentTimeMillis(),
+        addressRules = getCustomList(context, "address").toList(),
+        codeRules = getCustomList(context, "code").toList(),
+        lockerRules = getCustomList(context, "locker").toList(),
+        ignoreKeywords = getCustomList(context, "ignoreKeywords").toList()
+    )
+    return Json.encodeToString(data)
+}
+
+fun importRulesFromJson(context: Context, viewModel: ParcelViewModel, json: String) {
+    try {
+        val data: RulesExportData = Json.decodeFromString(json)
+        data.addressRules.filter { it.isNotBlank() }.forEach { rule ->
+            addCustomList(context, "address", rule)
+            viewModel.addCustomAddressPattern(rule)
+        }
+        data.codeRules.filter { it.isNotBlank() }.forEach { rule ->
+            addCustomList(context, "code", rule)
+            viewModel.addCustomCodePattern(rule)
+        }
+        data.lockerRules.filter { it.isNotBlank() }.forEach { rule ->
+            addCustomList(context, "locker", rule)
+            viewModel.addCustomLockerPattern(rule)
+        }
+        data.ignoreKeywords.filter { it.isNotBlank() }.forEach { keyword ->
+            addCustomList(context, "ignoreKeywords", keyword)
+            viewModel.addIgnoreKeyword(keyword)
+        }
+        addLog(context, "规则导入完成: 地址${data.addressRules.size}条, 取件码${data.codeRules.size}条, 柜号${data.lockerRules.size}条, 忽略词${data.ignoreKeywords.size}条")
+    } catch (e: Exception) {
+        addLog(context, "规则导入解析失败: ${e.message}")
+        throw e
+    }
 }

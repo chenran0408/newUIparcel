@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.util
+package com.chenran.parcel.util
 
 import android.content.Context
 import com.chenran.parcel.model.ParcelData
@@ -14,6 +14,14 @@ data class ProcessResult(
 )
 
 object SmsProcessor {
+
+    private fun lockerSortKey(locker: String): Int {
+        if (locker.isEmpty()) return Int.MAX_VALUE
+        val firstChar = locker.first()
+        if (firstChar in '\u2460'..'\u2473') return firstChar.code - 0x2460 + 1
+        val numMatch = Regex("""^\d+""").find(locker)
+        return numMatch?.value?.toIntOrNull() ?: Int.MAX_VALUE
+    }
 
     suspend fun loadMessages(context: Context, daysFilter: Int): Pair<List<SmsModel>, List<SmsModel>> = withContext(Dispatchers.IO) {
         val systemSms = SmsUtil.readSmsByTimeFilter(context, daysFilter)
@@ -32,14 +40,15 @@ object SmsProcessor {
         val mergedList = systemSms + customSms
         val addressMappings = getAddressMappings(context)
 
-        process(mergedList, parser, completedIds, addressMappings)
+        process(mergedList, parser, completedIds, addressMappings, getSortByLocker(context))
     }
 
     fun process(
         messages: List<SmsModel>,
         parser: SmsParser,
         completedIds: List<String>,
-        addressMappings: Map<String, String> = emptyMap()
+        addressMappings: Map<String, String> = emptyMap(),
+        sortByLocker: Boolean = false
     ): ProcessResult {
         val successful = mutableListOf<SmsData>()
         val parcelsMap = mutableMapOf<String, ParcelData>()
@@ -51,15 +60,41 @@ object SmsProcessor {
             if (result.success) {
                 val combinedKey = "${sms.id}_${sms.timestamp}"
                 val originalAddress = result.address
-                // 获取分组用的地址（优先使用 tag）
                 val groupAddress = addressMappings[originalAddress] ?: originalAddress
                 
                 val smsData = SmsData(originalAddress, result.code, sms, combinedKey, false, result.lockerNumber)
                 successful.add(smsData)
 
-                // Grouping logic - use groupAddress for grouping
                 val existingParcel = parcelsMap[groupAddress]
                 val newItem = SmsData(originalAddress, result.code, sms, combinedKey, false, result.lockerNumber)
+
+                if (existingParcel != null) {
+                    val existsSameDaySameAddrCode = existingParcel.smsDataList.any { existing ->
+                        existing.address == newItem.address &&
+                                existing.code == newItem.code &&
+                                isSameDay(existing.sms.timestamp, newItem.sms.timestamp)
+                    }
+                    if (!existsSameDaySameAddrCode) {
+                        existingParcel.smsDataList.add(newItem)
+                    }
+                } else {
+                    parcelsMap[groupAddress] = ParcelData(
+                        groupAddress,
+                        mutableListOf(newItem)
+                    )
+                }
+            } else if (result.isPickupSms) {
+                val combinedKey = "${sms.id}_${sms.timestamp}"
+                val displayAddress = if (result.address.isNotEmpty()) result.address else "未识别"
+                val displayCode = if (result.code.isNotEmpty()) result.code else ""
+                val rawBody = sms.body
+                val groupAddress = addressMappings[displayAddress] ?: displayAddress
+
+                val smsData = SmsData(displayAddress, displayCode, sms, combinedKey, false, result.lockerNumber, rawBody)
+                successful.add(smsData)
+
+                val existingParcel = parcelsMap[groupAddress]
+                val newItem = SmsData(displayAddress, displayCode, sms, combinedKey, false, result.lockerNumber, rawBody)
 
                 if (existingParcel != null) {
                     val existsSameDaySameAddrCode = existingParcel.smsDataList.any { existing ->
@@ -87,15 +122,18 @@ object SmsProcessor {
 
         val initialParcels = parcelsMap.values.toList()
 
-        // 先按字符串排序，然后有柜号的排前面，按柜号升序排列
         initialParcels.forEach { parcel ->
-            parcel.smsDataList.sortWith(
-                compareBy(
-                    { it.lockerNumber.isEmpty() },
-                    { it.lockerNumber.toIntOrNull() ?: Int.MAX_VALUE },
-                    { it.code }
+            if (sortByLocker) {
+                parcel.smsDataList.sortWith(
+                    compareBy(
+                        { it.lockerNumber.isEmpty() },
+                        { lockerSortKey(it.lockerNumber) },
+                        { it.code }
+                    )
                 )
-            )
+            } else {
+                parcel.smsDataList.sortByDescending { it.sms.timestamp }
+            }
         }
 
         // Calculate num and isCompleted

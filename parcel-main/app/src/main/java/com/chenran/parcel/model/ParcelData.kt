@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.model
+package com.chenran.parcel.model
 
 data class ParcelData(
     val address: String,

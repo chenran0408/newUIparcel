@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.ui
+package com.chenran.parcel.ui
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.BorderStroke
@@ -100,8 +100,6 @@ fun AddressGroupScreen(
                     val allMessages = allSms + customSms
                     val parser = SmsParser()
                     loadCustomRulesToParser(context, parser)
-                    // 获取所有地址时，不需要显示几号柜
-                    parser.preferLockerAddress = false
 
                     allMessages.mapNotNull { sms ->
                         val result = parser.parseSms(sms.body)

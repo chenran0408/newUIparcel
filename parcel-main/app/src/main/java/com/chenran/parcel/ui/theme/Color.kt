@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.ui.theme
+package com.chenran.parcel.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

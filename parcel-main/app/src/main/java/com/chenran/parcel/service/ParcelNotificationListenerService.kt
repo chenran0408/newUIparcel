@@ -1,4 +1,4 @@
-﻿package com.chenran.parcel.service
+package com.chenran.parcel.service
 
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.os.Bundle
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.NotificationCompat
@@ -17,7 +18,7 @@ import com.chenran.parcel.model.SmsModel
 import com.chenran.parcel.util.addCustomSms
 import com.chenran.parcel.util.SmsParser
 import com.chenran.parcel.util.getCustomList
-import com.chenran.parcel.util.getPreferLockerAddress
+import com.chenran.parcel.util.getSortByLocker
 import com.chenran.parcel.util.loadCustomRulesToParser
 import com.chenran.parcel.util.isMainSwitchEnabled
 import com.chenran.parcel.util.isAppSwitchEnabled
@@ -26,8 +27,6 @@ import com.chenran.parcel.util.getTitlesForPackage
 import com.chenran.parcel.util.ThirdPartyDefaults
 import com.chenran.parcel.util.addLog
 import com.chenran.parcel.util.SmsUtil
-import com.chenran.parcel.util.getSystemSmsPackages
-import com.chenran.parcel.util.getSystemSmsNotifySwitch
 import com.chenran.parcel.util.getSystemSmsPackages
 import com.chenran.parcel.util.getSystemSmsNotifySwitch
 
@@ -87,7 +86,11 @@ class ParcelNotificationListenerService : NotificationListenerService() {
                 .setContentText("监听已开启")
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .build()
-            startForeground(1001, notif)
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(1001, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            } else {
+                startForeground(1001, notif)
+            }
         } catch (_: Exception) {
         }
     }
@@ -225,7 +228,7 @@ class ParcelNotificationListenerService : NotificationListenerService() {
             val now = System.currentTimeMillis()
             val prev = lastContent
             if (prev != null && prev == content && (now - lastTs) < 2000L) {
-                addLog(context, "微信通知重复，已忽略(2秒内重复): $content")
+                addLog(context, "通知重复，已忽略(2秒内重复): $content")
                 return
             }
             lastContent = content
