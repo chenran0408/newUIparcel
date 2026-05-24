@@ -60,8 +60,7 @@ object SmsProcessor {
             if (result.success) {
                 val combinedKey = "${sms.id}_${sms.timestamp}"
                 val originalAddress = result.address
-                val hasTag = addressMappings.containsKey(originalAddress)
-                val groupAddress = addressMappings[originalAddress] ?: "未归类"
+                val groupAddress = addressMappings[originalAddress] ?: originalAddress
                 
                 val smsData = SmsData(originalAddress, result.code, sms, combinedKey, false, result.lockerNumber)
                 successful.add(smsData)
@@ -89,8 +88,7 @@ object SmsProcessor {
                 val displayAddress = if (result.address.isNotEmpty()) result.address else "未识别"
                 val displayCode = if (result.code.isNotEmpty()) result.code else ""
                 val rawBody = sms.body
-                val hasTag = addressMappings.containsKey(displayAddress)
-                val groupAddress = addressMappings[displayAddress] ?: "未归类"
+                val groupAddress = addressMappings[displayAddress] ?: displayAddress
 
                 val smsData = SmsData(displayAddress, displayCode, sms, combinedKey, false, result.lockerNumber, rawBody)
                 successful.add(smsData)

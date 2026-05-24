@@ -1,6 +1,7 @@
 package com.chenran.parcel.ui
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,9 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.chenran.parcel.ui.theme.GlassCard
+import com.chenran.parcel.ui.theme.SuccessGreen
 import com.chenran.parcel.ui.theme.glassOnCardColor
 import com.chenran.parcel.ui.theme.glassOnCardVariantColor
-import com.chenran.parcel.ui.theme.glassSheetColor
 import com.chenran.parcel.ui.components.TagDialog
 import com.chenran.parcel.util.SmsParser
 import com.chenran.parcel.util.SmsUtil
@@ -86,7 +88,7 @@ fun AddressGroupScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var currentAddress by remember { mutableStateOf<String?>(null) }
     var currentTag by remember { mutableStateOf("") }
-
+    val expandedTags = remember { mutableStateListOf<String>() }
 
     fun loadData() {
         scope.launch {
@@ -107,6 +109,8 @@ fun AddressGroupScreen(
                     }.distinct().sorted()
                 }
                 allAddresses = addresses
+                val tags = mappings.values.toSet().filter { it !in expandedTags }
+                expandedTags.addAll(tags)
             } catch (e: Exception) {
                 com.chenran.parcel.util.addLog(context, "加载地址列表失败: ${e.message}")
             }
@@ -128,6 +132,8 @@ fun AddressGroupScreen(
         onCallback()
     }
 
+    val tagsWithAddresses = addressMappings.entries.groupBy({ it.value }, { it.key }).toSortedMap()
+    val unmappedAddresses = allAddresses.filter { it !in addressMappings.keys }.sorted()
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -190,71 +196,111 @@ fun AddressGroupScreen(
                 verticalArrangement = Arrangement.Top,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                val mappedAddresses = addressMappings.keys.toList()
-                if (mappedAddresses.isNotEmpty()) {
-                    item {
-                        SectionHeader(title = "已归类地址 (${mappedAddresses.size})")
-                        Spacer(modifier = Modifier.height(8.dp))
+                tagsWithAddresses.forEach { (tag, addresses) ->
+                    item(key = "tag_$tag") {
+                        val isExpanded = expandedTags.contains(tag)
+                        Surface(
+                            onClick = {
+                                if (isExpanded) expandedTags.remove(tag) else expandedTags.add(tag)
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = SuccessGreen.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = tag,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SuccessGreen
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = SuccessGreen.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "${addresses.size}个地址",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = SuccessGreen.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = if (isExpanded) "收起" else "展开",
+                                    tint = SuccessGreen.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
-                    items(mappedAddresses.sorted()) { addr ->
-                        val tag = addressMappings[addr] ?: ""
-                        AddressCard(
+                    val isExpanded = expandedTags.contains(tag)
+                    if (isExpanded) {
+                        items(items = addresses.sorted(), key = { "addr_${tag}_$it" }) { addr ->
+                            TagAddressItem(
+                                address = addr,
+                                isSelected = selectedAddresses.contains(addr),
+                                isSelectionMode = isSelectionMode,
+                                onItemClick = {
+                                    if (isSelectionMode) {
+                                        if (selectedAddresses.contains(addr)) selectedAddresses.remove(addr)
+                                        else selectedAddresses.add(addr)
+                                    }
+                                },
+                                onRemoveClick = { removeMapping(addr) }
+                            )
+                        }
+                    }
+                }
+
+                if (unmappedAddresses.isNotEmpty()) {
+                    item(key = "unmapped_header") {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "未归类 (${unmappedAddresses.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = glassOnCardColor()
+                            )
+                        }
+                    }
+                    items(items = unmappedAddresses, key = { "unmapped_$it" }) { addr ->
+                        UnmappedAddressItem(
                             address = addr,
-                            tag = tag,
                             isSelected = selectedAddresses.contains(addr),
                             isSelectionMode = isSelectionMode,
                             onItemClick = {
                                 if (isSelectionMode) {
-                                    if (selectedAddresses.contains(addr)) {
-                                        selectedAddresses.remove(addr)
-                                    } else {
-                                        selectedAddresses.add(addr)
-                                    }
+                                    if (selectedAddresses.contains(addr)) selectedAddresses.remove(addr)
+                                    else selectedAddresses.add(addr)
                                 }
                             },
-                            onEditClick = {
+                            onTagClick = {
                                 selectedAddresses.clear()
                                 selectedAddresses.add(addr)
-                                currentTag = tag
                                 currentAddress = addr
                                 showAddDialog = true
-                            },
-                            onDeleteClick = { removeMapping(addr) }
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
-                }
-
-                val unmappedAddresses = allAddresses.filter { it !in addressMappings.keys }
-                item {
-                    SectionHeader(title = "未归类地址 (${unmappedAddresses.size})")
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                items(unmappedAddresses.sorted()) { addr ->
-                    AddressCard(
-                        address = addr,
-                        tag = null,
-                        isSelected = selectedAddresses.contains(addr),
-                        isSelectionMode = isSelectionMode,
-                        onItemClick = {
-                            if (isSelectionMode) {
-                                if (selectedAddresses.contains(addr)) {
-                                    selectedAddresses.remove(addr)
-                                } else {
-                                    selectedAddresses.add(addr)
-                                }
                             }
-                        },
-                        onEditClick = {
-                            selectedAddresses.clear()
-                            selectedAddresses.add(addr)
-                            currentAddress = addr
-                            showAddDialog = true
-                        },
-                        onDeleteClick = {}
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                        )
+                    }
                 }
             }
         }
@@ -285,38 +331,18 @@ fun AddressGroupScreen(
             }
         )
     }
-
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = glassOnCardColor()
-        )
-    }
-}
-
-@Composable
-private fun AddressCard(
+private fun TagAddressItem(
     address: String,
-    tag: String?,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     onItemClick: () -> Unit,
-    onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit,
+    onRemoveClick: () -> Unit,
 ) {
     val cardBorder = if (isSelected) {
-        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
     } else {
         Modifier
     }
@@ -324,20 +350,21 @@ private fun AddressCard(
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .padding(start = 16.dp, top = 3.dp, bottom = 3.dp)
+            .clip(RoundedCornerShape(12.dp))
             .then(cardBorder)
             .clickable { onItemClick() },
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (isSelectionMode) {
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(22.dp)
                         .clip(CircleShape)
                         .background(
                             if (isSelected) MaterialTheme.colorScheme.primary
@@ -350,54 +377,113 @@ private fun AddressCard(
                         Icon(
                             Icons.Default.Check,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
             }
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = address,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = glassOnCardColor(),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (tag != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Surface(
-                        onClick = onEditClick,
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = tag,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+            Text(
+                text = address,
+                style = MaterialTheme.typography.bodyMedium,
+                color = glassOnCardColor(),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            if (!isSelectionMode) {
+                Surface(
+                    onClick = onRemoveClick,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Red.copy(alpha = 0.1f),
+                ) {
+                    Text(
+                        text = "移出",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Red.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnmappedAddressItem(
+    address: String,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onItemClick: () -> Unit,
+    onTagClick: () -> Unit,
+) {
+    val cardBorder = if (isSelected) {
+        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+    } else {
+        Modifier
+    }
+
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .then(cardBorder)
+            .clickable { onItemClick() },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isSelectionMode) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else Color.Transparent
+                        )
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 }
+                Spacer(modifier = Modifier.width(10.dp))
             }
 
-            if (!isSelectionMode && tag != null) {
-                IconButton(onClick = onDeleteClick) {
-                    Icon(
-                        Icons.Outlined.Delete,
-                        contentDescription = "移除归类",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            } else if (!isSelectionMode && tag == null) {
-                IconButton(onClick = onEditClick) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "添加归类",
-                        tint = MaterialTheme.colorScheme.primary
+            Text(
+                text = address,
+                style = MaterialTheme.typography.bodyMedium,
+                color = glassOnCardColor(),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            if (!isSelectionMode) {
+                Surface(
+                    onClick = onTagClick,
+                    shape = RoundedCornerShape(6.dp),
+                    color = SuccessGreen.copy(alpha = 0.12f),
+                ) {
+                    Text(
+                        text = "归类",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SuccessGreen.copy(alpha = 0.8f)
                     )
                 }
             }

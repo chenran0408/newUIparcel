@@ -575,7 +575,7 @@ fun AddressCard(
     var showTagDialog by remember { mutableStateOf(false) }
     var showSmsDetail by remember { mutableStateOf<String?>(null) }
     val addressMappings = remember { getAddressMappings(context) }
-    val isGroupedByTag = parcelData.address != parcelData.smsDataList.firstOrNull()?.address || addressMappings.containsKey(parcelData.address)
+    val isGroupedByTag = addressMappings.containsKey(parcelData.address)
     val currentTag = addressMappings[parcelData.address] ?: ""
     val displayTag = if (isGroupedByTag) parcelData.address else currentTag
 
@@ -677,119 +677,23 @@ fun AddressCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(top = 8.dp)) {
-                    if (isGroupedByTag) {
-                        val groupedByAddr = parcelData.smsDataList.groupBy { it.address }
-                        groupedByAddr.forEach { (originalAddress, smsList) ->
-                            var addrExpanded by remember { mutableStateOf(true) }
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 6.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.White.copy(alpha = if (isDarkTheme) 0.04f else 0.08f))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { addrExpanded = !addrExpanded },
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = originalAddress,
-                                        style = if (isSeniorMode) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = onCardColor.copy(alpha = 0.8f),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (parcelData.address != "未归类") {
-                                            Surface(
-                                                onClick = {
-                                                    removeAddressMapping(context, originalAddress)
-                                                    (context as? MainActivity)?.readAndParseSms()
-                                                },
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = Color.Red.copy(alpha = if (isDarkTheme) 0.12f else 0.1f),
-                                            ) {
-                                                Text(
-                                                    text = "移出",
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = Color.Red.copy(alpha = 0.7f)
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                        } else {
-                                            Surface(
-                                                onClick = { showTagDialog = true },
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = SuccessGreen.copy(alpha = if (isDarkTheme) 0.12f else 0.1f),
-                                            ) {
-                                                Text(
-                                                    text = "归类",
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = SuccessGreen.copy(alpha = 0.8f)
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                        }
-                                        Icon(
-                                            imageVector = if (addrExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                                            contentDescription = if (addrExpanded) "收起" else "展开",
-                                            tint = onCardVariantColor.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                    parcelData.smsDataList.forEach { smsData ->
+                        if (!(((!isExpanded) && smsData.isCompleted) || ((!showCompleted) && smsData.isCompleted))) {
+                            SmsDataRow(
+                                smsData = smsData,
+                                isSeniorMode = isSeniorMode,
+                                isDarkTheme = isDarkTheme,
+                                showCodeTime = showCodeTime,
+                                onCodeClick = {
+                                    if (smsData.isCompleted) {
+                                        removeCompletedId(context, viewModel, smsData.sms)
+                                    } else {
+                                        addCompletedIds(context, viewModel, listOf(smsData.sms))
                                     }
-                                }
-                                AnimatedVisibility(visible = addrExpanded) {
-                                    Column {
-                                        smsList.forEach { smsData ->
-                                            if (!(((!isExpanded) && smsData.isCompleted) || ((!showCompleted) && smsData.isCompleted))) {
-                                                SmsDataRow(
-                                                    smsData = smsData,
-                                                    isSeniorMode = isSeniorMode,
-                                                    isDarkTheme = isDarkTheme,
-                                                    showCodeTime = showCodeTime,
-                                                    onCodeClick = {
-                                                        if (smsData.isCompleted) {
-                                                            removeCompletedId(context, viewModel, smsData.sms)
-                                                        } else {
-                                                            addCompletedIds(context, viewModel, listOf(smsData.sms))
-                                                        }
-                                                        updateAllWidget()
-                                                    },
-                                                    onRawClick = { showSmsDetail = smsData.sms.body }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        parcelData.smsDataList.forEach { smsData ->
-                            if (!(((!isExpanded) && smsData.isCompleted) || ((!showCompleted) && smsData.isCompleted))) {
-                                SmsDataRow(
-                                    smsData = smsData,
-                                    isSeniorMode = isSeniorMode,
-                                    isDarkTheme = isDarkTheme,
-                                    showCodeTime = showCodeTime,
-                                    onCodeClick = {
-                                        if (smsData.isCompleted) {
-                                            removeCompletedId(context, viewModel, smsData.sms)
-                                        } else {
-                                            addCompletedIds(context, viewModel, listOf(smsData.sms))
-                                        }
-                                        updateAllWidget()
-                                    },
-                                    onRawClick = { showSmsDetail = smsData.sms.body }
-                                )
-                            }
+                                    updateAllWidget()
+                                },
+                                onRawClick = { showSmsDetail = smsData.sms.body }
+                            )
                         }
                     }
                 }
